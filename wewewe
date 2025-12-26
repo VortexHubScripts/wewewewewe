@@ -3010,7 +3010,7 @@ function CodeGen:BuildHookCode(CallInfo: CallInfo)
 	local IsFromActor = CallInfo.IsActor or false
 	local Method = wax.shared.FunctionForClasses[Type][CallInfo.Instance.ClassName]
 
-	local CodeGenHeader = CodeGenHeaderTemplate
+	local CodeGenHeader = ""
 	if not wax.shared.SaveManager:GetState("ShowWatermark", true) then
 		CodeGenHeader = ""
 	end
@@ -3201,7 +3201,7 @@ function CodeGen:BuildCallCode(CallInfo: CallInfo)
 		{ Prettify = true, InsertCycles = true }
 	)
 
-	local CodeGenHeader = CodeGenHeaderTemplate
+	local CodeGenHeader = ""
 	if not wax.shared.SaveManager:GetState("ShowWatermark", true) then
 		CodeGenHeader = ""
 	end
