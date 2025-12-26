@@ -5430,19 +5430,21 @@ CreateSettingsRemoteList("BlockedRemotes", {
 })
 
 CreateSettingsRemoteList("BlockedDataFunctions", {
-	Text = "Blocked Calls",
-	NullMessage = "No calls have been blocked from showing yet.",
+	Text = "Blocked Events",
+	NullMessage = "No events have been blocked from showing yet.",
 	Section = BlockedSection,
 	Callback = function(Remote)
-		-- Unblock the call
-		if Remote.CallInfo then
-			Remote.CallInfo.BlockedFromShowing = false
-			
-			-- Find and show the call frame if it exists
-			for _, child in pairs(LogsList:GetChildren()) do
-				if child:IsA("TextButton") and child.LayoutOrder == Remote.Order then
-					child.Visible = true
-					break
+		-- Unblock all calls with this event name
+		if Remote.EventName and Remote.Instance then
+			local Log = wax.shared.Logs[Remote.Type][Remote.Instance]
+			if Log then
+				for _, call in Log.Calls do
+					-- Find and show the corresponding CallFrame in LogsList
+					for _, child in pairs(LogsList:GetChildren()) do
+						if child:IsA("TextButton") and child.LayoutOrder == call.Order then
+							child.Visible = true
+						end
+					end
 				end
 			end
 		end
@@ -7383,6 +7385,19 @@ function CreateCallFrame(CallInfo)
 	if not wax.shared.Settings.ShowExecutorLogs.Value and not CallInfo.Origin then
 		return
 	end
+	
+	-- Check if this event name is blocked from showing
+	local isBlockedEventName = false
+	local BlockedList = wax.shared.Settings["BlockedDataFunctions"]
+	if BlockedList and CallInfo.Instance then
+		local eventName = CallInfo.Instance.Name
+		for _, blockedItem in BlockedList.Value do
+			if blockedItem.EventName == eventName and blockedItem.Type == CallInfo.Type then
+				isBlockedEventName = true
+				break
+			end
+		end
+	end
 
 	local CallFrame = Interface.New("TextButton", {
 		AutomaticSize = Enum.AutomaticSize.Y,
@@ -7390,7 +7405,7 @@ function CreateCallFrame(CallInfo)
 		LayoutOrder = CallInfo.Order,
 		Size = UDim2.fromScale(1, 0),
 		Text = "",
-		Visible = not CallInfo.BlockedFromShowing,  -- Hide if blocked
+		Visible = not isBlockedEventName,  -- Hide if event name is blocked
 
 		["UIListLayout"] = {
 			Padding = UDim.new(0, 6),
@@ -7513,27 +7528,46 @@ function CreateCallFrame(CallInfo)
 						return "Block From Showing"
 					end
 					
-					-- Check if this specific call is blocked
-					if CallInfo.BlockedFromShowing then
-						return "Unblock From Showing"
-					else
+					-- Check if this event name is blocked
+					local BlockedList = wax.shared.Settings["BlockedDataFunctions"]
+					if not BlockedList then
 						return "Block From Showing"
 					end
+					
+					local eventName = CallInfo.Instance and CallInfo.Instance.Name or "Unknown"
+					local isBlocked = false
+					for _, blockedItem in BlockedList.Value do
+						if blockedItem.EventName == eventName and blockedItem.Type == CallInfo.Type then
+							isBlocked = true
+							break
+						end
+					end
+					
+					return isBlocked and "Unblock From Showing" or "Block From Showing"
 				end,
 				Icon = function()
 					if not CallInfo then
 						return "eye-off"
 					end
 					
-					-- Check if blocked
-					if CallInfo.BlockedFromShowing then
-						return "eye"
-					else
+					local BlockedList = wax.shared.Settings["BlockedDataFunctions"]
+					if not BlockedList then
 						return "eye-off"
 					end
+					
+					local eventName = CallInfo.Instance and CallInfo.Instance.Name or "Unknown"
+					local isBlocked = false
+					for _, blockedItem in BlockedList.Value do
+						if blockedItem.EventName == eventName and blockedItem.Type == CallInfo.Type then
+							isBlocked = true
+							break
+						end
+					end
+					
+					return isBlocked and "eye" or "eye-off"
 				end,
 				Callback = function()
-					if not CallInfo then
+					if not CallInfo or not CallInfo.Instance then
 						return
 					end
 					
@@ -7543,40 +7577,61 @@ function CreateCallFrame(CallInfo)
 						return
 					end
 					
-					if CallInfo.BlockedFromShowing then
-						-- Unblock this specific call
-						CallInfo.BlockedFromShowing = false
-						
-						-- Remove from blocked list
-						for index, blockedItem in BlockedList.Value do
-							if blockedItem.CallInfo == CallInfo then
-								table.remove(BlockedList.Value, index)
-								break
-							end
+					local eventName = CallInfo.Instance.Name
+					
+					-- Check if already blocked
+					local isBlocked = false
+					local blockedIndex = nil
+					for index, blockedItem in BlockedList.Value do
+						if blockedItem.EventName == eventName and blockedItem.Type == CallInfo.Type then
+							isBlocked = true
+							blockedIndex = index
+							break
 						end
+					end
+					
+					if isBlocked then
+						-- Unblock all calls with this event name
+						table.remove(BlockedList.Value, blockedIndex)
 						BlockedList:Display()
 						
-						-- Show the call frame again
-						CallFrame.Visible = true
+						-- Show all call frames for this event
+						local Log = wax.shared.Logs[CallInfo.Type][CallInfo.Instance]
+						if Log then
+							for _, call in Log.Calls do
+								-- Find the corresponding CallFrame in LogsList
+								for _, child in pairs(LogsList:GetChildren()) do
+									if child:IsA("TextButton") and child.LayoutOrder == call.Order then
+										child.Visible = true
+									end
+								end
+							end
+						end
 						
-						wax.shared.Sonner.success("Call has been unblocked from showing")
+						wax.shared.Sonner.success(`{eventName} has been unblocked from showing`)
 					else
-						-- Block this specific call
-						CallInfo.BlockedFromShowing = true
-						
-						-- Add to blocked list
+						-- Block all calls with this event name
 						BlockedList:AddToList({
-							CallInfo = CallInfo,
+							EventName = eventName,
 							Instance = CallInfo.Instance,
 							Type = CallInfo.Type,
-							Name = CallInfo.Instance.Name,
-							Order = CallInfo.Order
+							Name = eventName
 						})
 						
-						-- Hide the call frame immediately
-						CallFrame.Visible = false
+						-- Hide all call frames for this event
+						local Log = wax.shared.Logs[CallInfo.Type][CallInfo.Instance]
+						if Log then
+							for _, call in Log.Calls do
+								-- Find and hide the corresponding CallFrame in LogsList
+								for _, child in pairs(LogsList:GetChildren()) do
+									if child:IsA("TextButton") and child.LayoutOrder == call.Order then
+										child.Visible = false
+									end
+								end
+							end
+						end
 						
-						wax.shared.Sonner.success("Call has been blocked from showing")
+						wax.shared.Sonner.success(`{eventName} has been blocked from showing`)
 					end
 				end,
 			},
