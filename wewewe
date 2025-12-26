@@ -230,7 +230,7 @@ wax.shared.SetupLoggingConnection = function()
 		wax.shared.LogConnection:Disconnect()
 	end
 
-	wax.shared.LogFileName = `Cobalt/Logs/{DateTime.now():ToIsoDate():gsub(":", "_")}.log`
+	wax.shared.LogFileName = `Coolestbalt/Logs/{DateTime.now():ToIsoDate():gsub(":", "_")}.log`
 	local FileLog = FileLogger.new(wax.shared.LogFileName, FileLogger.LOG_LEVELS.INFO, true)
 
 	return function(RemoteInstance, Type, CallOrderInLog)
@@ -786,7 +786,7 @@ if CheckFFlagValue("DebugRunParallelLuaOnMainThread", false) and not ExecutorSup
 			if response == "Enable Fix" then
 				setfflag("DebugRunParallelLuaOnMainThread", "true")
 				wax.shared.StarterGui:SetCore("SendNotification", {
-					Title = "Cobalt",
+					Title = "Coolestbalt",
 					Text = "Please rejoin for the fix to take effect!",
 					Duration = math.huge,
 				})
@@ -796,7 +796,7 @@ if CheckFFlagValue("DebugRunParallelLuaOnMainThread", false) and not ExecutorSup
 		end
 
 		wax.shared.StarterGui:SetCore("SendNotification", {
-			Title = "Cobalt",
+			Title = "Coolestbalt",
 			Text = "This game may use remotes in a way that your executor can't intercept. You can enable the fix and rejoin to detect them.",
 			Duration = math.huge,
 			Callback = bindable,
@@ -2323,8 +2323,8 @@ end)() end,
 	makefolder("Cobalt")
 end
 
-if not isfile("Cobalt/Settings.json") then
-	writefile("Cobalt/Settings.json", "{}")
+if not isfile("Coolestbalt/Settings.json") then
+	writefile("Coolestbalt/Settings.json", "{}")
 end
 
 local SaveManager = {
@@ -2332,7 +2332,7 @@ local SaveManager = {
 }
 
 local Success, Error = pcall(function()
-	SaveManager.State = wax.shared.HttpService:JSONDecode(readfile("Cobalt/Settings.json"))
+	SaveManager.State = wax.shared.HttpService:JSONDecode(readfile("Coolestbalt/Settings.json"))
 end)
 
 if not Success then
@@ -2341,7 +2341,7 @@ end
 
 function SaveManager:SetState(Idx, Value)
 	SaveManager.State[Idx] = Value
-	pcall(writefile, "Cobalt/Settings.json", wax.shared.HttpService:JSONEncode(SaveManager.State))
+	pcall(writefile, "Coolestbalt/Settings.json", wax.shared.HttpService:JSONEncode(SaveManager.State))
 end
 
 function SaveManager:GetState(Idx, Default)
@@ -3754,7 +3754,7 @@ Images = ImageFetcher.GetRemoteImages(Images)
 local CobaltLogo = ImageFetcher.GetImage("Logo")
 
 local ScreenGui = Interface.New("ScreenGui", {
-	Name = "Cobalt",
+	Name = "Coolestbalt",
 	ResetOnSpawn = false,
 	Parent = Interface.GetScreenParent(),
 	ZIndexBehavior = Enum.ZIndexBehavior.Sibling,
@@ -5159,7 +5159,7 @@ if #wax.shared.ExecutorSupport.FailedChecks.NonEssential > 0 then
 	local NoticeTitleInfoSeperator = CreatePaddingText(4)
 
 	Interface.New("TextLabel", {
-		Text = `<font size="16"><b>DETECTION NOTICE ⚠️</b></font>\n{NoticeTitleInfoSeperator}Cobalt can get detected because your executor does not support the following functions/libraries:`,
+		Text = `<font size="16"><b>DETECTION NOTICE ⚠️</b></font>\n{NoticeTitleInfoSeperator}Coolestbalt can get detected because your executor does not support the following functions/libraries:`,
 		TextSize = 15,
 		Size = UDim2.fromScale(1, 0),
 		AutomaticSize = Enum.AutomaticSize.Y,
@@ -5253,7 +5253,7 @@ CreateSettingsCheckbox("PreferBufferFromString", {
 })
 
 CreateSettingsCheckbox("ShowWatermark", {
-	Text = "Show Cobalt Watermark",
+	Text = "Show Coolestbalt Watermark",
 	Default = true,
 	Section = CodeGenSection,
 })
@@ -5466,7 +5466,7 @@ CreateSettingsCheckbox("EnableLogging", {
 		end
 
 		local LogConnection = wax.shared.SetupLoggingConnection()
-		SessionLog.Text = `Current Session Log: <b>{wax.shared.LogFileName:gsub("Cobalt/Logs/", "")}</b>`
+		SessionLog.Text = `Current Session Log: <b>{wax.shared.LogFileName:gsub("Coolestbalt/Logs/", "")}</b>`
 		wax.shared.LogConnection = wax.shared.Connect(wax.shared.Communicator.Event:Connect(LogConnection))
 
 		wax.shared.Sonner.success("Successfully enabled file logging")
@@ -5475,7 +5475,7 @@ CreateSettingsCheckbox("EnableLogging", {
 
 SessionLog = Interface.New("TextLabel", {
 	Text = `Current Session Log: <b>{wax.shared.Settings.EnableLogging.Value and wax.shared.LogFileName:gsub(
-		"Cobalt/Logs/",
+		"Coolestbalt/Logs/",
 		""
 	) or "Not Logging"}</b>`,
 	TextSize = 16,
@@ -5488,7 +5488,7 @@ SessionLog = Interface.New("TextLabel", {
 })
 
 Interface.New("TextLabel", {
-	Text = `Logs Path: <b>Cobalt/Logs</b>`,
+	Text = `Logs Path: <b>Coolestbalt/Logs</b>`,
 	TextSize = 16,
 	Size = UDim2.fromScale(1, 0),
 	AutomaticSize = Enum.AutomaticSize.Y,
@@ -5533,7 +5533,7 @@ local CopySessionName = CreateSettingsButton("Copy Session Name", function()
 		return
 	end
 
-	local ActualLogFileName = wax.shared.LogFileName:gsub("Cobalt/Logs/", "")
+	local ActualLogFileName = wax.shared.LogFileName:gsub("Coolestbalt/Logs/", "")
 	local Success, Error = pcall(setclipboard, ActualLogFileName)
 
 	if not Success then
@@ -6583,7 +6583,7 @@ local TopBar = Interface.New("Frame", {
 	Parent = MainFrame,
 
 	["TextLabel"] = {
-		Text = "Cobalt",
+		Text = "Coolestbalt",
 		TextSize = 18,
 		Position = UDim2.fromOffset(0, 1),
 		Size = UDim2.new(1, 0, 1, -1),
@@ -10270,7 +10270,7 @@ local LineOffsets = {
 
 -- Misc AOT variable imports
 local WaxVersion = "0.4.1"
-local EnvName = "Coolestbalt"
+local EnvName = "Cobalt"
 
 -- ++++++++ RUNTIME IMPL BELOW ++++++++ --
 
