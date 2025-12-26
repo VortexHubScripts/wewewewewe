@@ -5292,8 +5292,12 @@ CreateSettingsTextBox("MaxItemPerPages", {
 		if not CurrentLog then
 			return
 		end
+		
+		local VisibleCount = wax.shared.Settings.ShowExecutorLogs.Value 
+			and CurrentLog:GetVisibleCallsCount() 
+			or CurrentLog:GetVisibleGameCallsCount()
 
-		PaginationHelper:Update(#CurrentLog.Calls)
+		PaginationHelper:Update(VisibleCount)
 		PaginationHelper:SetPage(1)
 		CurrentPage[CurrentLog] = 1
 
@@ -5390,8 +5394,12 @@ CreateSettingsCheckbox("ShowExecutorLogs", {
 		if not CurrentLog then
 			return
 		end
+		
+		local VisibleCount = wax.shared.Settings.ShowExecutorLogs.Value 
+			and CurrentLog:GetVisibleCallsCount() 
+			or CurrentLog:GetVisibleGameCallsCount()
 
-		PaginationHelper:Update(#CurrentLog.Calls)
+		PaginationHelper:Update(VisibleCount)
 		PaginationHelper:SetPage(1)
 		CurrentPage[CurrentLog] = 1
 
@@ -6236,7 +6244,12 @@ CreateInfoDropdownButton("network", "Event", {
 			end
 
 			CurrentLog.Calls = {}
-			PaginationHelper:Update(#CurrentLog.Calls)
+			
+			local VisibleCount = wax.shared.Settings.ShowExecutorLogs.Value 
+				and CurrentLog:GetVisibleCallsCount() 
+				or CurrentLog:GetVisibleGameCallsCount()
+			
+			PaginationHelper:Update(VisibleCount)
 			PaginationHelper:SetPage(1)
 			CurrentPage[CurrentLog] = 1
 
@@ -6920,8 +6933,12 @@ function ShowLog(Log)
 		CurrentPage[Log] = 1
 		Page = 1
 	end
+	
+	local VisibleCount = wax.shared.Settings.ShowExecutorLogs.Value 
+		and Log:GetVisibleCallsCount() 
+		or Log:GetVisibleGameCallsCount()
 
-	PaginationHelper:Update(#Log.Calls)
+	PaginationHelper:Update(VisibleCount)
 	PaginationHelper:SetPage(Page)
 
 	LogsList.CanvasPosition = Vector2.zero
@@ -6930,26 +6947,45 @@ function ShowLog(Log)
 end
 
 ShowCalls = function(Log, Page)
+	-- Build a list of visible (non-blocked) calls
+	local VisibleCalls = {}
+	
+	if wax.shared.Settings.ShowExecutorLogs.Value then
+		for Index, Call in ipairs(Log.Calls) do
+			if not Log:ShouldBlockCall(Call) then
+				table.insert(VisibleCalls, {
+					CallInfo = Call,
+					OriginalIndex = Index
+				})
+			end
+		end
+	else
+		for _, Index in ipairs(Log.GameCalls) do
+			local Call = Log.Calls[Index]
+			if Call and not Log:ShouldBlockCall(Call) then
+				table.insert(VisibleCalls, {
+					CallInfo = Call,
+					OriginalIndex = Index
+				})
+			end
+		end
+	end
+	
+	-- Get pagination range for visible calls
 	local Start, End = PaginationHelper:GetIndexRanges(Page)
 
-	for Index = Start, End do
-		local Call
-		if wax.shared.Settings.ShowExecutorLogs.Value then
-			Call = Log.Calls[Index]
-		else
-			Call = Log.Calls[Log.GameCalls[Index]]
-		end
-
-		if not Call then
+	for i = Start, End do
+		local VisibleCall = VisibleCalls[i]
+		if not VisibleCall then
 			break
 		end
 
 		local Data = setmetatable({
 			Instance = Log.Instance,
 			Type = Log.Type,
-			Order = Index,
+			Order = i,  -- Use sequential order for display
 		}, {
-			__index = Call,
+			__index = VisibleCall.CallInfo,
 		})
 
 		CreateCallFrame(Data)
@@ -7274,7 +7310,11 @@ function CreateLogButton(Log): (TextButton, TextLabel, TextLabel)
 				UpdateLogNameSize(Log)
 
 				if CurrentLog == Log then
-					PaginationHelper:Update(#Log.Calls)
+					local VisibleCount = wax.shared.Settings.ShowExecutorLogs.Value 
+						and Log:GetVisibleCallsCount() 
+						or Log:GetVisibleGameCallsCount()
+					
+					PaginationHelper:Update(VisibleCount)
 					PaginationHelper:SetPage(1)
 
 					CleanLogsList()
@@ -7541,6 +7581,21 @@ function CreateCallFrame(CallInfo)
 					-- Refresh the display to hide/show blocked calls
 					if CurrentLog and CurrentLog == Log then
 						local Page = CurrentPage[CurrentLog] or 1
+						
+						-- Update pagination with new visible count
+						local VisibleCount = wax.shared.Settings.ShowExecutorLogs.Value 
+							and CurrentLog:GetVisibleCallsCount() 
+							or CurrentLog:GetVisibleGameCallsCount()
+						PaginationHelper:Update(VisibleCount)
+						
+						-- If current page is now beyond the last page, go to last page
+						local MaxPage = math.ceil(VisibleCount / PaginationHelper.ItemsPerPage)
+						if MaxPage > 0 and Page > MaxPage then
+							Page = MaxPage
+							CurrentPage[CurrentLog] = Page
+						end
+						
+						PaginationHelper:SetPage(Page)
 						CleanLogsList()
 						ShowPagination(CurrentLog)
 						ShowCalls(CurrentLog, Page)
@@ -7868,7 +7923,11 @@ wax.shared.Connect(wax.shared.Communicator.Event:Connect(function(Instance, Type
 	Log.Button.Instance.Parent = RemoteList
 
 	if CurrentLog == Log then
-		PaginationHelper:Update(#Log.Calls)
+		local VisibleCount = wax.shared.Settings.ShowExecutorLogs.Value 
+			and Log:GetVisibleCallsCount() 
+			or Log:GetVisibleGameCallsCount()
+		
+		PaginationHelper:Update(VisibleCount)
 
 		local Start, End = PaginationHelper:GetIndexRanges(Page)
 		if not wax.shared.Settings.ShowExecutorLogs.Value then
@@ -9740,6 +9799,27 @@ function Log:Ignore()
 			IgnoredRemoteList:RemoveFromList(self)
 		end
 	end
+end
+
+function Log:GetVisibleCallsCount()
+	local Count = 0
+	for _, CallInfo in ipairs(self.Calls) do
+		if not self:ShouldBlockCall(CallInfo) then
+			Count = Count + 1
+		end
+	end
+	return Count
+end
+
+function Log:GetVisibleGameCallsCount()
+	local Count = 0
+	for _, Index in ipairs(self.GameCalls) do
+		local CallInfo = self.Calls[Index]
+		if CallInfo and not self:ShouldBlockCall(CallInfo) then
+			Count = Count + 1
+		end
+	end
+	return Count
 end
 
 local ClassesConnectionsToggle = {
