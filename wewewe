@@ -7417,6 +7417,10 @@ function CreateCallFrame(CallInfo)
 
 		Parent = LogsList,
 	})
+	
+	-- Store event name and type as attributes so we can identify which frames to hide/show
+	CallFrame:SetAttribute("EventName", CallInfo.Instance and CallInfo.Instance.Name or "Unknown")
+	CallFrame:SetAttribute("EventType", CallInfo.Type)
 
 	local HighlightStroke = Interface.New("UIStroke", {
 		ApplyStrokeMode = Enum.ApplyStrokeMode.Border,
@@ -7573,12 +7577,13 @@ function CreateCallFrame(CallInfo)
 					end
 					
 					local eventName = CallInfo.Instance.Name
+					local eventType = CallInfo.Type
 					
 					-- Check if already blocked
 					local isBlocked = false
 					local blockedIndex = nil
 					for index, blockedItem in BlockedList.Value do
-						if blockedItem.EventName == eventName and blockedItem.Type == CallInfo.Type then
+						if blockedItem.EventName == eventName and blockedItem.Type == eventType then
 							isBlocked = true
 							blockedIndex = index
 							break
@@ -7590,10 +7595,16 @@ function CreateCallFrame(CallInfo)
 						table.remove(BlockedList.Value, blockedIndex)
 						BlockedList:Display()
 						
-						-- Refresh the call frames to show them
-						CleanLogsList()
-						local Page = CurrentPage[CurrentLog] or 1
-						ShowCalls(CurrentLog, Page)
+						-- Show all call frames matching this event name and type
+						for _, child in pairs(LogsList:GetChildren()) do
+							if child:IsA("TextButton") then
+								local childEventName = child:GetAttribute("EventName")
+								local childEventType = child:GetAttribute("EventType")
+								if childEventName == eventName and childEventType == eventType then
+									child.Visible = true
+								end
+							end
+						end
 						
 						wax.shared.Sonner.success(`{eventName} has been unblocked from showing`)
 					else
@@ -7601,14 +7612,18 @@ function CreateCallFrame(CallInfo)
 						BlockedList:AddToList({
 							EventName = eventName,
 							Instance = CallInfo.Instance,
-							Type = CallInfo.Type,
+							Type = eventType,
 							Name = eventName
 						})
 						
-						-- Hide ALL call frames in LogsList (since we're viewing this event, all frames are from it)
+						-- Hide only call frames matching this event name and type
 						for _, child in pairs(LogsList:GetChildren()) do
 							if child:IsA("TextButton") then
-								child.Visible = false
+								local childEventName = child:GetAttribute("EventName")
+								local childEventType = child:GetAttribute("EventType")
+								if childEventName == eventName and childEventType == eventType then
+									child.Visible = false
+								end
 							end
 						end
 						
