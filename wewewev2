@@ -7923,6 +7923,11 @@ wax.shared.Connect(wax.shared.Communicator.Event:Connect(function(Instance, Type
 	end
 
 	local CallInfo = Log.Calls[CallIndex]
+	
+	-- If CallInfo doesn't exist (call was blocked), don't try to render it
+	if not CallInfo then
+		return
+	end
 
 	local Page = CurrentPage[Log]
 	if not Page then
