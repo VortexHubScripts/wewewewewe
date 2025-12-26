@@ -5430,14 +5430,21 @@ CreateSettingsRemoteList("BlockedRemotes", {
 })
 
 CreateSettingsRemoteList("BlockedDataFunctions", {
-	Text = "Blocked DataFunctions/Events",
-	NullMessage = "No DataFunctions or events have been blocked from showing yet.",
+	Text = "Blocked Calls",
+	NullMessage = "No calls have been blocked from showing yet.",
 	Section = BlockedSection,
 	Callback = function(Remote)
-		-- Remove from blocked list
-		local BlockedList = wax.shared.Settings["BlockedDataFunctions"]
-		if BlockedList then
-			BlockedList:RemoveFromList(Remote)
+		-- Unblock the call
+		if Remote.CallInfo then
+			Remote.CallInfo.BlockedFromShowing = false
+			
+			-- Find and show the call frame if it exists
+			for _, child in pairs(LogsList:GetChildren()) do
+				if child:IsA("TextButton") and child.LayoutOrder == Remote.Order then
+					child.Visible = true
+					break
+				end
+			end
 		end
 	end,
 })
@@ -6893,25 +6900,7 @@ function ShowTab(Tab)
 		Log.Button.Name.Text = Log.Instance.Name
 		Log.Button.Calls.Text = "x" .. #Log.Calls
 		UpdateLogNameSize(Log)
-		
-		-- Check if this DataFunction/Event is blocked from showing
-		local isBlockedFromShowing = false
-		local BlockedList = wax.shared.Settings["BlockedDataFunctions"]
-		if BlockedList then
-			for _, blockedItem in BlockedList.Value do
-				if blockedItem.Instance == Log.Instance and blockedItem.Type == Log.Type then
-					isBlockedFromShowing = true
-					break
-				end
-			end
-		end
-		
-		-- Only show the button if it's not blocked from showing
-		if not isBlockedFromShowing then
-			Log.Button.Instance.Parent = RemoteList
-		else
-			Log.Button.Instance.Parent = nil
-		end
+		Log.Button.Instance.Parent = RemoteList
 	end
 end
 
@@ -7401,6 +7390,7 @@ function CreateCallFrame(CallInfo)
 		LayoutOrder = CallInfo.Order,
 		Size = UDim2.fromScale(1, 0),
 		Text = "",
+		Visible = not CallInfo.BlockedFromShowing,  -- Hide if blocked
 
 		["UIListLayout"] = {
 			Padding = UDim.new(0, 6),
@@ -7519,49 +7509,31 @@ function CreateCallFrame(CallInfo)
 			},
 			{
 				Text = function()
-					if not CallInfo or not CallInfo.Instance then
+					if not CallInfo then
 						return "Block From Showing"
 					end
 					
-					local BlockedList = wax.shared.Settings["BlockedDataFunctions"]
-					if not BlockedList then
+					-- Check if this specific call is blocked
+					if CallInfo.BlockedFromShowing then
+						return "Unblock From Showing"
+					else
 						return "Block From Showing"
 					end
-					
-					-- Check if this specific instance/type combo is already blocked
-					local isBlocked = false
-					for _, blockedItem in BlockedList.Value do
-						if blockedItem.Instance == CallInfo.Instance and blockedItem.Type == CallInfo.Type then
-							isBlocked = true
-							break
-						end
-					end
-					
-					return isBlocked and "Unblock From Showing" or "Block From Showing"
 				end,
 				Icon = function()
-					if not CallInfo or not CallInfo.Instance then
-						return "eye-off"
-					end
-					
-					local BlockedList = wax.shared.Settings["BlockedDataFunctions"]
-					if not BlockedList then
+					if not CallInfo then
 						return "eye-off"
 					end
 					
 					-- Check if blocked
-					local isBlocked = false
-					for _, blockedItem in BlockedList.Value do
-						if blockedItem.Instance == CallInfo.Instance and blockedItem.Type == CallInfo.Type then
-							isBlocked = true
-							break
-						end
+					if CallInfo.BlockedFromShowing then
+						return "eye"
+					else
+						return "eye-off"
 					end
-					
-					return isBlocked and "eye" or "eye-off"
 				end,
 				Callback = function()
-					if not CallInfo or not CallInfo.Instance then
+					if not CallInfo then
 						return
 					end
 					
@@ -7571,44 +7543,40 @@ function CreateCallFrame(CallInfo)
 						return
 					end
 					
-					-- Check if already blocked
-					local isBlocked = false
-					local blockedIndex = nil
-					for index, blockedItem in BlockedList.Value do
-						if blockedItem.Instance == CallInfo.Instance and blockedItem.Type == CallInfo.Type then
-							isBlocked = true
-							blockedIndex = index
-							break
+					if CallInfo.BlockedFromShowing then
+						-- Unblock this specific call
+						CallInfo.BlockedFromShowing = false
+						
+						-- Remove from blocked list
+						for index, blockedItem in BlockedList.Value do
+							if blockedItem.CallInfo == CallInfo then
+								table.remove(BlockedList.Value, index)
+								break
+							end
 						end
-					end
-					
-					if isBlocked then
-						-- Unblock
-						table.remove(BlockedList.Value, blockedIndex)
 						BlockedList:Display()
 						
-						-- Show the log button again by refreshing the tab
-						local Log = wax.shared.Logs[CallInfo.Type][CallInfo.Instance]
-						if Log and Log.Button and Log.Button.Instance then
-							Log.Button.Instance.Parent = RemoteList
-						end
+						-- Show the call frame again
+						CallFrame.Visible = true
 						
-						wax.shared.Sonner.success(`{CallInfo.Instance.Name} has been unblocked from showing`)
+						wax.shared.Sonner.success("Call has been unblocked from showing")
 					else
-						-- Block
+						-- Block this specific call
+						CallInfo.BlockedFromShowing = true
+						
+						-- Add to blocked list
 						BlockedList:AddToList({
+							CallInfo = CallInfo,
 							Instance = CallInfo.Instance,
 							Type = CallInfo.Type,
-							Name = CallInfo.Instance.Name
+							Name = CallInfo.Instance.Name,
+							Order = CallInfo.Order
 						})
 						
-						-- Hide the log button immediately
-						local Log = wax.shared.Logs[CallInfo.Type][CallInfo.Instance]
-						if Log and Log.Button and Log.Button.Instance then
-							Log.Button.Instance.Parent = nil
-						end
+						-- Hide the call frame immediately
+						CallFrame.Visible = false
 						
-						wax.shared.Sonner.success(`{CallInfo.Instance.Name} has been blocked from showing`)
+						wax.shared.Sonner.success("Call has been blocked from showing")
 					end
 				end,
 			},
@@ -7912,25 +7880,7 @@ wax.shared.Connect(wax.shared.Communicator.Event:Connect(function(Instance, Type
 	Log.Button.Name.Text = Log.Instance.Name
 	UpdateLogNameSize(Log)
 	Log.Button.Calls.Text = "x" .. #Log.Calls
-	
-	-- Check if this DataFunction/Event is blocked from showing
-	local isBlockedFromShowing = false
-	local BlockedList = wax.shared.Settings["BlockedDataFunctions"]
-	if BlockedList then
-		for _, blockedItem in BlockedList.Value do
-			if blockedItem.Instance == Log.Instance and blockedItem.Type == Log.Type then
-				isBlockedFromShowing = true
-				break
-			end
-		end
-	end
-	
-	-- Only show the button if it's not blocked from showing
-	if not isBlockedFromShowing then
-		Log.Button.Instance.Parent = RemoteList
-	else
-		Log.Button.Instance.Parent = nil
-	end
+	Log.Button.Instance.Parent = RemoteList
 
 	if CurrentLog == Log then
 		PaginationHelper:Update(#Log.Calls)
