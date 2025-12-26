@@ -6940,12 +6940,44 @@ function ShowLog(Log)
 		Page = 1
 	end
 
-	PaginationHelper:Update(#Log.Calls)
+	PaginationHelper:Update(CountVisibleCalls(Log))
 	PaginationHelper:SetPage(Page)
 
 	LogsList.CanvasPosition = Vector2.zero
 	ShowPagination(Log)
 	ShowCalls(Log, Page)
+end
+
+local function CountVisibleCalls(Log)
+	-- Count how many calls are NOT blocked from showing
+	local BlockedList = wax.shared.Settings["BlockedDataFunctions"]
+	if not BlockedList or not Log or not Log.Instance then
+		return #Log.Calls
+	end
+	
+	local visibleCount = 0
+	local eventName = Log.Instance.Name
+	local eventType = Log.Type
+	
+	for _, call in Log.Calls do
+		local firstArg = call.Arguments and call.Arguments[1] or nil
+		local firstArgStr = tostring(firstArg)
+		
+		-- Check if this call is blocked
+		local isBlocked = false
+		for _, blockedItem in BlockedList.Value do
+			if blockedItem.EventName == eventName and blockedItem.Type == eventType and blockedItem.FirstArg == firstArgStr then
+				isBlocked = true
+				break
+			end
+		end
+		
+		if not isBlocked then
+			visibleCount = visibleCount + 1
+		end
+	end
+	
+	return visibleCount
 end
 
 ShowCalls = function(Log, Page)
@@ -7293,7 +7325,7 @@ function CreateLogButton(Log): (TextButton, TextLabel, TextLabel)
 				UpdateLogNameSize(Log)
 
 				if CurrentLog == Log then
-					PaginationHelper:Update(#Log.Calls)
+					PaginationHelper:Update(CountVisibleCalls(Log))
 					PaginationHelper:SetPage(1)
 
 					CleanLogsList()
@@ -7620,6 +7652,11 @@ function CreateCallFrame(CallInfo)
 							end
 						end
 						
+						-- Update pagination to reflect new visible count
+						if CurrentLog then
+							PaginationHelper:Update(CountVisibleCalls(CurrentLog))
+						end
+						
 						wax.shared.Sonner.success(`{eventName} ({firstArgStr}) has been unblocked from showing`)
 					else
 						-- Block all calls with this event name, type, and first argument
@@ -7641,6 +7678,11 @@ function CreateCallFrame(CallInfo)
 									child.Visible = false
 								end
 							end
+						end
+						
+						-- Update pagination to reflect new visible count
+						if CurrentLog then
+							PaginationHelper:Update(CountVisibleCalls(CurrentLog))
 						end
 						
 						wax.shared.Sonner.success(`{eventName} ({firstArgStr}) has been blocked from showing`)
@@ -7950,7 +7992,7 @@ wax.shared.Connect(wax.shared.Communicator.Event:Connect(function(Instance, Type
 	Log.Button.Instance.Parent = RemoteList
 
 	if CurrentLog == Log then
-		PaginationHelper:Update(#Log.Calls)
+		PaginationHelper:Update(CountVisibleCalls(Log))
 
 		local Start, End = PaginationHelper:GetIndexRanges(Page)
 		if not wax.shared.Settings.ShowExecutorLogs.Value then
@@ -10228,7 +10270,7 @@ local LineOffsets = {
 
 -- Misc AOT variable imports
 local WaxVersion = "0.4.1"
-local EnvName = "Cobalt"
+local EnvName = "Coolestbalt"
 
 -- ++++++++ RUNTIME IMPL BELOW ++++++++ --
 
