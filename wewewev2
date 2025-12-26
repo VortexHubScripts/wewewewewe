@@ -2978,9 +2978,7 @@ local function DoesUseCallbackValue(Instance: Instance)
 	return Instance.ClassName == "RemoteFunction" or Instance.ClassName == "BindableFunction"
 end
 
-local CodeGenHeaderTemplate = [[
-
-]]
+local CodeGenHeaderTemplate = [[]]
 
 function CodeGen:IndentCode(Code: string, IndentLevel: number)
 	local Indent = CodeGen.IndentTemplate:rep(IndentLevel)
@@ -3739,9 +3737,30 @@ local Images = {
 
 -- Functions
 local function UpdateLogNameSize(Log)
+	local VisibleCount
+	if wax.shared.Settings and wax.shared.Settings.ShowExecutorLogs and wax.shared.Settings.ShowExecutorLogs.Value then
+		VisibleCount = Log:GetVisibleCallsCount()
+	else
+		VisibleCount = Log:GetVisibleGameCallsCount()
+	end
+	
 	local TextSizeX, _TextSizeY =
-		wax.shared.GetTextBounds("x" .. #Log.Calls, Log.Button.Calls.FontFace, Log.Button.Calls.TextSize)
+		wax.shared.GetTextBounds("x" .. VisibleCount, Log.Button.Calls.FontFace, Log.Button.Calls.TextSize)
 	Log.Button.Name.Size = UDim2.new(1, -(TextSizeX + 24), 1, 0)
+end
+
+local function UpdateLogCallCount(Log)
+	if not Log.Button then return end
+	
+	local VisibleCount
+	if wax.shared.Settings and wax.shared.Settings.ShowExecutorLogs and wax.shared.Settings.ShowExecutorLogs.Value then
+		VisibleCount = Log:GetVisibleCallsCount()
+	else
+		VisibleCount = Log:GetVisibleGameCallsCount()
+	end
+	
+	Log.Button.Calls.Text = "x" .. VisibleCount
+	UpdateLogNameSize(Log)
 end
 
 local function GetDPIScale()
@@ -6254,8 +6273,7 @@ CreateInfoDropdownButton("network", "Event", {
 
 			CleanLogsList()
 
-			CurrentLog.Button.Calls.Text = "x" .. #CurrentLog.Calls
-			UpdateLogNameSize(CurrentLog)
+			UpdateLogCallCount(CurrentLog)
 
 			ShowPagination(CurrentLog)
 			ShowCalls(CurrentLog, 1)
@@ -6890,8 +6908,7 @@ function ShowTab(Tab)
 		end
 
 		Log.Button.Name.Text = Log.Instance.Name
-		Log.Button.Calls.Text = "x" .. #Log.Calls
-		UpdateLogNameSize(Log)
+		UpdateLogCallCount(Log)
 		Log.Button.Instance.Parent = RemoteList
 	end
 end
@@ -7305,8 +7322,7 @@ function CreateLogButton(Log): (TextButton, TextLabel, TextLabel)
 
 				Log.Calls = {}
 				CurrentPage[Log] = 1
-				Log.Button.Calls.Text = "x" .. #Log.Calls
-				UpdateLogNameSize(Log)
+				UpdateLogCallCount(Log)
 
 				if CurrentLog == Log then
 					local VisibleCount = wax.shared.Settings.ShowExecutorLogs.Value 
@@ -7576,6 +7592,9 @@ function CreateCallFrame(CallInfo)
 					else
 						wax.shared.Sonner.success(`Unblocked function name: {FirstArg}`)
 					end
+					
+					-- Update the call count display
+					UpdateLogCallCount(Log)
 					
 					-- Refresh the display to hide/show blocked calls
 					if CurrentLog and CurrentLog == Log then
@@ -7917,8 +7936,7 @@ wax.shared.Connect(wax.shared.Communicator.Event:Connect(function(Instance, Type
 	end
 
 	Log.Button.Name.Text = Log.Instance.Name
-	UpdateLogNameSize(Log)
-	Log.Button.Calls.Text = "x" .. #Log.Calls
+	UpdateLogCallCount(Log)
 	Log.Button.Instance.Parent = RemoteList
 
 	if CurrentLog == Log then
