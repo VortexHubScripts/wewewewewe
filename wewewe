@@ -5430,17 +5430,22 @@ CreateSettingsRemoteList("BlockedRemotes", {
 })
 
 CreateSettingsRemoteList("BlockedDataFunctions", {
-	Text = "Blocked Events",
-	NullMessage = "No events have been blocked from showing yet.",
+	Text = "Blocked Calls",
+	NullMessage = "No calls have been blocked from showing yet.",
 	Section = BlockedSection,
 	Callback = function(Remote)
-		-- Unblock all calls with this event name
-		if Remote.EventName and Remote.Instance then
-			-- If the user is currently viewing this event, refresh the calls
-			if CurrentLog and CurrentLog.Instance == Remote.Instance then
-				CleanLogsList()
-				local Page = CurrentPage[CurrentLog] or 1
-				ShowCalls(CurrentLog, Page)
+		-- Unblock all calls matching this event name, type, and first argument
+		if Remote.EventName and Remote.Instance and Remote.FirstArg then
+			-- Show all matching frames in LogsList
+			for _, child in pairs(LogsList:GetChildren()) do
+				if child:IsA("TextButton") then
+					local childEventName = child:GetAttribute("EventName")
+					local childEventType = child:GetAttribute("EventType")
+					local childFirstArg = child:GetAttribute("FirstArg")
+					if childEventName == Remote.EventName and childEventType == Remote.Type and childFirstArg == Remote.FirstArg then
+						child.Visible = true
+					end
+				end
 			end
 		end
 	end,
@@ -7381,14 +7386,17 @@ function CreateCallFrame(CallInfo)
 		return
 	end
 	
-	-- Check if this event name is blocked from showing
-	local isBlockedEventName = false
+	-- Check if this call's first argument is blocked from showing
+	local isBlockedCall = false
 	local BlockedList = wax.shared.Settings["BlockedDataFunctions"]
-	if BlockedList and CallInfo.Instance then
+	if BlockedList and CallInfo.Instance and CallInfo.Arguments then
 		local eventName = CallInfo.Instance.Name
+		local firstArg = CallInfo.Arguments[1]
+		local firstArgStr = tostring(firstArg)
+		
 		for _, blockedItem in BlockedList.Value do
-			if blockedItem.EventName == eventName and blockedItem.Type == CallInfo.Type then
-				isBlockedEventName = true
+			if blockedItem.EventName == eventName and blockedItem.Type == CallInfo.Type and blockedItem.FirstArg == firstArgStr then
+				isBlockedCall = true
 				break
 			end
 		end
@@ -7400,7 +7408,7 @@ function CreateCallFrame(CallInfo)
 		LayoutOrder = CallInfo.Order,
 		Size = UDim2.fromScale(1, 0),
 		Text = "",
-		Visible = not isBlockedEventName,  -- Hide if event name is blocked
+		Visible = not isBlockedCall,  -- Hide if this specific call type is blocked
 
 		["UIListLayout"] = {
 			Padding = UDim.new(0, 6),
@@ -7418,9 +7426,11 @@ function CreateCallFrame(CallInfo)
 		Parent = LogsList,
 	})
 	
-	-- Store event name and type as attributes so we can identify which frames to hide/show
+	-- Store event info and first argument as attributes so we can identify which frames to hide/show
+	local firstArg = CallInfo.Arguments and CallInfo.Arguments[1] or nil
 	CallFrame:SetAttribute("EventName", CallInfo.Instance and CallInfo.Instance.Name or "Unknown")
 	CallFrame:SetAttribute("EventType", CallInfo.Type)
+	CallFrame:SetAttribute("FirstArg", tostring(firstArg))
 
 	local HighlightStroke = Interface.New("UIStroke", {
 		ApplyStrokeMode = Enum.ApplyStrokeMode.Border,
@@ -7534,9 +7544,11 @@ function CreateCallFrame(CallInfo)
 					end
 					
 					local eventName = CallInfo.Instance and CallInfo.Instance.Name or "Unknown"
+					local firstArg = CallInfo.Arguments and CallInfo.Arguments[1] or nil
+					local firstArgStr = tostring(firstArg)
 					local isBlocked = false
 					for _, blockedItem in BlockedList.Value do
-						if blockedItem.EventName == eventName and blockedItem.Type == CallInfo.Type then
+						if blockedItem.EventName == eventName and blockedItem.Type == CallInfo.Type and blockedItem.FirstArg == firstArgStr then
 							isBlocked = true
 							break
 						end
@@ -7555,9 +7567,11 @@ function CreateCallFrame(CallInfo)
 					end
 					
 					local eventName = CallInfo.Instance and CallInfo.Instance.Name or "Unknown"
+					local firstArg = CallInfo.Arguments and CallInfo.Arguments[1] or nil
+					local firstArgStr = tostring(firstArg)
 					local isBlocked = false
 					for _, blockedItem in BlockedList.Value do
-						if blockedItem.EventName == eventName and blockedItem.Type == CallInfo.Type then
+						if blockedItem.EventName == eventName and blockedItem.Type == CallInfo.Type and blockedItem.FirstArg == firstArgStr then
 							isBlocked = true
 							break
 						end
@@ -7578,12 +7592,14 @@ function CreateCallFrame(CallInfo)
 					
 					local eventName = CallInfo.Instance.Name
 					local eventType = CallInfo.Type
+					local firstArg = CallInfo.Arguments and CallInfo.Arguments[1] or nil
+					local firstArgStr = tostring(firstArg)
 					
 					-- Check if already blocked
 					local isBlocked = false
 					local blockedIndex = nil
 					for index, blockedItem in BlockedList.Value do
-						if blockedItem.EventName == eventName and blockedItem.Type == eventType then
+						if blockedItem.EventName == eventName and blockedItem.Type == eventType and blockedItem.FirstArg == firstArgStr then
 							isBlocked = true
 							blockedIndex = index
 							break
@@ -7591,43 +7607,46 @@ function CreateCallFrame(CallInfo)
 					end
 					
 					if isBlocked then
-						-- Unblock all calls with this event name
+						-- Unblock all calls with this event name, type, and first argument
 						table.remove(BlockedList.Value, blockedIndex)
 						BlockedList:Display()
 						
-						-- Show all call frames matching this event name and type
+						-- Show all call frames matching this event name, type, and first argument
 						for _, child in pairs(LogsList:GetChildren()) do
 							if child:IsA("TextButton") then
 								local childEventName = child:GetAttribute("EventName")
 								local childEventType = child:GetAttribute("EventType")
-								if childEventName == eventName and childEventType == eventType then
+								local childFirstArg = child:GetAttribute("FirstArg")
+								if childEventName == eventName and childEventType == eventType and childFirstArg == firstArgStr then
 									child.Visible = true
 								end
 							end
 						end
 						
-						wax.shared.Sonner.success(`{eventName} has been unblocked from showing`)
+						wax.shared.Sonner.success(`{eventName} ({firstArgStr}) has been unblocked from showing`)
 					else
-						-- Block all calls with this event name
+						-- Block all calls with this event name, type, and first argument
 						BlockedList:AddToList({
 							EventName = eventName,
 							Instance = CallInfo.Instance,
 							Type = eventType,
-							Name = eventName
+							FirstArg = firstArgStr,
+							Name = `{eventName} ({firstArgStr})`
 						})
 						
-						-- Hide only call frames matching this event name and type
+						-- Hide only call frames matching this event name, type, and first argument
 						for _, child in pairs(LogsList:GetChildren()) do
 							if child:IsA("TextButton") then
 								local childEventName = child:GetAttribute("EventName")
 								local childEventType = child:GetAttribute("EventType")
-								if childEventName == eventName and childEventType == eventType then
+								local childFirstArg = child:GetAttribute("FirstArg")
+								if childEventName == eventName and childEventType == eventType and childFirstArg == firstArgStr then
 									child.Visible = false
 								end
 							end
 						end
 						
-						wax.shared.Sonner.success(`{eventName} has been blocked from showing`)
+						wax.shared.Sonner.success(`{eventName} ({firstArgStr}) has been blocked from showing`)
 					end
 				end,
 			},
