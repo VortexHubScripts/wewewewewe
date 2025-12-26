@@ -5436,16 +5436,11 @@ CreateSettingsRemoteList("BlockedDataFunctions", {
 	Callback = function(Remote)
 		-- Unblock all calls with this event name
 		if Remote.EventName and Remote.Instance then
-			local Log = wax.shared.Logs[Remote.Type][Remote.Instance]
-			if Log then
-				for _, call in Log.Calls do
-					-- Find and show the corresponding CallFrame in LogsList
-					for _, child in pairs(LogsList:GetChildren()) do
-						if child:IsA("TextButton") and child.LayoutOrder == call.Order then
-							child.Visible = true
-						end
-					end
-				end
+			-- If the user is currently viewing this event, refresh the calls
+			if CurrentLog and CurrentLog.Instance == Remote.Instance then
+				CleanLogsList()
+				local Page = CurrentPage[CurrentLog] or 1
+				ShowCalls(CurrentLog, Page)
 			end
 		end
 	end,
@@ -7595,18 +7590,10 @@ function CreateCallFrame(CallInfo)
 						table.remove(BlockedList.Value, blockedIndex)
 						BlockedList:Display()
 						
-						-- Show all call frames for this event
-						local Log = wax.shared.Logs[CallInfo.Type][CallInfo.Instance]
-						if Log then
-							for _, call in Log.Calls do
-								-- Find the corresponding CallFrame in LogsList
-								for _, child in pairs(LogsList:GetChildren()) do
-									if child:IsA("TextButton") and child.LayoutOrder == call.Order then
-										child.Visible = true
-									end
-								end
-							end
-						end
+						-- Refresh the call frames to show them
+						CleanLogsList()
+						local Page = CurrentPage[CurrentLog] or 1
+						ShowCalls(CurrentLog, Page)
 						
 						wax.shared.Sonner.success(`{eventName} has been unblocked from showing`)
 					else
@@ -7618,16 +7605,10 @@ function CreateCallFrame(CallInfo)
 							Name = eventName
 						})
 						
-						-- Hide all call frames for this event
-						local Log = wax.shared.Logs[CallInfo.Type][CallInfo.Instance]
-						if Log then
-							for _, call in Log.Calls do
-								-- Find and hide the corresponding CallFrame in LogsList
-								for _, child in pairs(LogsList:GetChildren()) do
-									if child:IsA("TextButton") and child.LayoutOrder == call.Order then
-										child.Visible = false
-									end
-								end
+						-- Hide ALL call frames in LogsList (since we're viewing this event, all frames are from it)
+						for _, child in pairs(LogsList:GetChildren()) do
+							if child:IsA("TextButton") then
+								child.Visible = false
 							end
 						end
 						
