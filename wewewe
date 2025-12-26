@@ -7292,95 +7292,6 @@ function CreateLogButton(Log): (TextButton, TextLabel, TextLabel)
 			end,
 		},
 		{
-			Text = function()
-				if not Log or not Log.Instance then
-					return "Block From Showing"
-				end
-				
-				local BlockedList = wax.shared.Settings["BlockedDataFunctions"]
-				if not BlockedList then
-					return "Block From Showing"
-				end
-				
-				-- Check if this specific instance/type combo is already blocked
-				local isBlocked = false
-				for _, blockedItem in BlockedList.Value do
-					if blockedItem.Instance == Log.Instance and blockedItem.Type == Log.Type then
-						isBlocked = true
-						break
-					end
-				end
-				
-				return isBlocked and "Unblock From Showing" or "Block From Showing"
-			end,
-			Icon = function()
-				if not Log or not Log.Instance then
-					return "eye-off"
-				end
-				
-				local BlockedList = wax.shared.Settings["BlockedDataFunctions"]
-				if not BlockedList then
-					return "eye-off"
-				end
-				
-				-- Check if blocked
-				local isBlocked = false
-				for _, blockedItem in BlockedList.Value do
-					if blockedItem.Instance == Log.Instance and blockedItem.Type == Log.Type then
-						isBlocked = true
-						break
-					end
-				end
-				
-				return isBlocked and "eye" or "eye-off"
-			end,
-			Callback = function()
-				if not Log or not Log.Instance then
-					return
-				end
-				
-				local BlockedList = wax.shared.Settings["BlockedDataFunctions"]
-				if not BlockedList then
-					wax.shared.Sonner.error("BlockedDataFunctions list not initialized")
-					return
-				end
-				
-				-- Check if already blocked
-				local isBlocked = false
-				local blockedIndex = nil
-				for index, blockedItem in BlockedList.Value do
-					if blockedItem.Instance == Log.Instance and blockedItem.Type == Log.Type then
-						isBlocked = true
-						blockedIndex = index
-						break
-					end
-				end
-				
-				if isBlocked then
-					-- Unblock
-					table.remove(BlockedList.Value, blockedIndex)
-					BlockedList:Display()
-					-- Show the log button again
-					if Log.Button and Log.Button.Instance then
-						Log.Button.Instance.Visible = true
-					end
-					wax.shared.Sonner.success(`{Log.Instance.Name} has been unblocked from showing`)
-				else
-					-- Block
-					BlockedList:AddToList({
-						Instance = Log.Instance,
-						Type = Log.Type,
-						Name = Log.Instance.Name
-					})
-					-- Hide the log button immediately
-					if Log.Button and Log.Button.Instance then
-						Log.Button.Instance.Visible = false
-					end
-					wax.shared.Sonner.success(`{Log.Instance.Name} has been blocked from showing`)
-				end
-			end,
-		},
-		{
 			Text = "Clear Logs",
 			Icon = "trash",
 			Callback = function()
@@ -7604,6 +7515,101 @@ function CreateCallFrame(CallInfo)
 						errorText = "Failed to replay event",
 						time = 4.5,
 					})
+				end,
+			},
+			{
+				Text = function()
+					if not CallInfo or not CallInfo.Instance then
+						return "Block From Showing"
+					end
+					
+					local BlockedList = wax.shared.Settings["BlockedDataFunctions"]
+					if not BlockedList then
+						return "Block From Showing"
+					end
+					
+					-- Check if this specific instance/type combo is already blocked
+					local isBlocked = false
+					for _, blockedItem in BlockedList.Value do
+						if blockedItem.Instance == CallInfo.Instance and blockedItem.Type == CallInfo.Type then
+							isBlocked = true
+							break
+						end
+					end
+					
+					return isBlocked and "Unblock From Showing" or "Block From Showing"
+				end,
+				Icon = function()
+					if not CallInfo or not CallInfo.Instance then
+						return "eye-off"
+					end
+					
+					local BlockedList = wax.shared.Settings["BlockedDataFunctions"]
+					if not BlockedList then
+						return "eye-off"
+					end
+					
+					-- Check if blocked
+					local isBlocked = false
+					for _, blockedItem in BlockedList.Value do
+						if blockedItem.Instance == CallInfo.Instance and blockedItem.Type == CallInfo.Type then
+							isBlocked = true
+							break
+						end
+					end
+					
+					return isBlocked and "eye" or "eye-off"
+				end,
+				Callback = function()
+					if not CallInfo or not CallInfo.Instance then
+						return
+					end
+					
+					local BlockedList = wax.shared.Settings["BlockedDataFunctions"]
+					if not BlockedList then
+						wax.shared.Sonner.error("BlockedDataFunctions list not initialized")
+						return
+					end
+					
+					-- Check if already blocked
+					local isBlocked = false
+					local blockedIndex = nil
+					for index, blockedItem in BlockedList.Value do
+						if blockedItem.Instance == CallInfo.Instance and blockedItem.Type == CallInfo.Type then
+							isBlocked = true
+							blockedIndex = index
+							break
+						end
+					end
+					
+					if isBlocked then
+						-- Unblock
+						table.remove(BlockedList.Value, blockedIndex)
+						BlockedList:Display()
+						
+						-- Show the log button again by refreshing the tab
+						local Log = wax.shared.Logs[CallInfo.Type][CallInfo.Instance]
+						if Log and Log.Button and Log.Button.Instance then
+							Log.Button.Instance.Parent = RemoteList
+						end
+						
+						wax.shared.Sonner.success(`{CallInfo.Instance.Name} has been unblocked from showing`)
+					else
+						-- Block
+						BlockedList:AddToList({
+							Instance = CallInfo.Instance,
+							Type = CallInfo.Type,
+							Name = CallInfo.Instance.Name
+						})
+						
+						-- Hide the log button immediately
+						local Log = wax.shared.Logs[CallInfo.Type][CallInfo.Instance]
+						if Log and Log.Button and Log.Button.Instance then
+							Log.Button.Instance.Parent = nil
+						end
+						
+						wax.shared.Sonner.success(`{CallInfo.Instance.Name} has been blocked from showing`)
+					end
 				end,
 			},
 		}, true)
