@@ -1,0 +1,3548 @@
+repeat task.wait() until game:IsLoaded()
+
+local Players = game:GetService("Players")
+repeat task.wait() until Players and Players.LocalPlayer
+repeat task.wait() until game:GetService("ReplicatedStorage") and game:GetService("RunService") and game:GetService("CoreGui")
+
+if not Players.LocalPlayer.Character then
+    Players.LocalPlayer.CharacterAdded:Wait()
+end
+task.wait(0.5)
+
+-- Load UI --
+local Compkiller = loadstring(game:HttpGet("https://raw.githubusercontent.com/VortexHubScripts/CompKillerBishop/refs/heads/main/CompKillerUI"))()
+
+-- Config Manager --
+local ConfigManager = Compkiller:ConfigManager({
+    Directory = "BishopHub",
+    Config = "Bloodlines-Configs",
+})
+
+-- Notification Helper --
+local Notifier = Compkiller.newNotify()
+
+-- Loader --
+Compkiller:Loader("rbxassetid://120245531583106", 2.5).yield()
+
+-- Window --
+local Window = Compkiller.new({
+    Name = "Bishop Hub",
+    Keybind = "LeftAlt",
+    Logo = "rbxassetid://120245531583106",
+    Scale = Compkiller.Scale.Window,
+    TextSize = 15,
+})
+
+-- ══════════════════════════════════════
+--           SERVICES & REFS
+-- ══════════════════════════════════════
+
+local Lighting          = game:GetService("Lighting")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local TeleportService   = game:GetService("TeleportService")
+local RunService        = game:GetService("RunService")
+local LocalPlayer       = Players.LocalPlayer
+
+local MAIN_MENU_ID = 5571328985
+
+-- ══════════════════════════════════════
+--           VISUAL FUNCTIONS
+-- ══════════════════════════════════════
+
+local ClockTimes = { Morning = 6.3, Afternoon = 14, Evening = 18, Night = 0 }
+
+-- No Fog --
+local originalFogEnd = Lighting.FogEnd
+
+local function setNoFog(enabled)
+    if enabled then
+        originalFogEnd = Lighting.FogEnd
+        Lighting.FogEnd = 99999
+    else
+        Lighting.FogEnd = originalFogEnd
+    end
+end
+
+-- No Rain --
+local noRainLoop = false
+
+local function setNoRain(enabled)
+    noRainLoop = enabled
+    if enabled then
+        task.spawn(function()
+            while noRainLoop do
+                pcall(function()
+                    ReplicatedStorage.Raining.Value = ""
+                end)
+                task.wait(0.5)
+            end
+        end)
+    end
+end
+
+-- Full Bright --
+local originalBrightness = Lighting.Brightness
+local fullBrightEnabled = false
+local currentBrightnessLevel = 5
+
+local function applyFullBright()
+    if fullBrightEnabled then
+        Lighting.Brightness = currentBrightnessLevel
+    end
+end
+
+local function setFullBright(enabled)
+    fullBrightEnabled = enabled
+    if enabled then
+        originalBrightness = Lighting.Brightness
+        applyFullBright()
+    else
+        Lighting.Brightness = originalBrightness
+    end
+end
+
+-- Time Changer --
+-- Hooks ClockTime's changed signal to revert it immediately whenever the game updates it --
+local timeChangerEnabled = false
+local currentTimeOfDay = "Morning"
+local blockingClockTime = false
+
+Lighting:GetPropertyChangedSignal("ClockTime"):Connect(function()
+    if timeChangerEnabled and not blockingClockTime then
+        blockingClockTime = true
+        Lighting.ClockTime = ClockTimes[currentTimeOfDay] or 6.3
+        blockingClockTime = false
+    end
+end)
+
+local function setTimeChanger(enabled)
+    timeChangerEnabled = enabled
+    if enabled then
+        blockingClockTime = true
+        Lighting.ClockTime = ClockTimes[currentTimeOfDay] or 6.3
+        blockingClockTime = false
+    end
+end
+
+-- ══════════════════════════════════════
+--          UTILITY FUNCTIONS
+-- ══════════════════════════════════════
+
+local function resetCharacter()
+    LocalPlayer.Character:BreakJoints()
+end
+
+local function randomServerHop()
+    local serversFolder = ReplicatedStorage:FindFirstChild("Servers")
+    if not serversFolder then
+        Notifier.new({ Title = "Server Hop", Content = "Servers folder not found.", Duration = 4 })
+        return
+    end
+
+    local serverList = {}
+    for _, child in pairs(serversFolder:GetChildren()) do
+        if child:IsA("StringValue") and child.Value ~= "" then
+            local serverId, playerCount = child.Value:match("^(%S+)%s+(%d+)$")
+            if serverId and playerCount then
+                local count = tonumber(playerCount) or 0
+                if count >= 10 and count <= 19 then
+                    table.insert(serverList, { name = child.Name, id = serverId, playerCount = count })
+                end
+            end
+        end
+    end
+
+    if #serverList == 0 then
+        Notifier.new({ Title = "Server Hop", Content = "No suitable servers found.", Duration = 4 })
+        return
+    end
+
+    local selected = serverList[math.random(1, #serverList)]
+    Notifier.new({ Title = "Server Hop", Content = string.format('Joining "%s" (%d players)', selected.name, selected.playerCount), Duration = 4 })
+    ReplicatedStorage.Events.DataEvent:FireServer("ServerTeleport", selected.id, 14)
+end
+
+local function lowPlayerServerHop()
+    local serversFolder = ReplicatedStorage:FindFirstChild("Servers")
+    if not serversFolder then
+        Notifier.new({ Title = "Server Hop", Content = "Servers folder not found.", Duration = 4 })
+        return
+    end
+
+    local currentJobId = game.JobId
+    local serverList = {}
+    for _, child in pairs(serversFolder:GetChildren()) do
+        if child:IsA("StringValue") and child.Value ~= "" then
+            local serverId, playerCount = child.Value:match("^(%S+)%s+(%d+)$")
+            if serverId and playerCount then
+                local count = tonumber(playerCount) or 0
+                if count >= 1 and count < 10 and serverId ~= currentJobId then
+                    table.insert(serverList, { name = child.Name, id = serverId, playerCount = count })
+                end
+            end
+        end
+    end
+
+    if #serverList == 0 then
+        Notifier.new({ Title = "Server Hop", Content = "No servers found with under 10 players.", Duration = 4 })
+        return
+    end
+
+    table.sort(serverList, function(a, b) return a.playerCount < b.playerCount end)
+    local selected = serverList[math.random(1, math.min(3, #serverList))]
+    Notifier.new({ Title = "Server Hop", Content = string.format('Joining "%s" (%d players)', selected.name, selected.playerCount), Duration = 4 })
+    ReplicatedStorage.Events.DataEvent:FireServer("ServerTeleport", selected.id, 14)
+end
+
+local function joinMainMenu()
+    TeleportService:Teleport(MAIN_MENU_ID, LocalPlayer)
+end
+
+-- ══════════════════════════════════════
+--           SPECTATE MODULE
+-- ══════════════════════════════════════
+
+local Spectate = {
+    currentTarget      = nil,  -- name of player currently being spectated
+    connections        = {},   -- in-game PlayerList hook connections
+    lastLabel          = nil,  -- last highlighted PlayerName label
+    lastTemplate       = nil,  -- last clicked PlayerTemplate button
+    connectedTemplates = {},   -- set of templates already hooked (prevents double-connect)
+    DEFAULT_COLOR      = Color3.fromRGB(255, 255, 255),
+    HIGHLIGHT_COLOR    = Color3.fromRGB(255, 50, 50),
+}
+
+local function getSpectateHumanoid(player)
+    local char = player.Character or player.CharacterAdded:Wait()
+    return char:WaitForChild("Humanoid", 5)
+end
+
+local function setMenuVisibility(visible)
+    pcall(function()
+        local rest = LocalPlayer.PlayerGui.ClientGui.Mainframe.Rest
+        for _, name in ipairs({ "BackDrop", "MainMenuFrame" }) do
+            local child = rest:FindFirstChild(name)
+            if child then child.Visible = visible end
+        end
+    end)
+end
+
+local function setBlurEnabled(enabled)
+    pcall(function()
+        for _, v in ipairs(Lighting:GetChildren()) do
+            if v:IsA("BlurEffect") or v:IsA("DepthOfFieldEffect") then
+                v.Enabled = enabled
+            end
+        end
+        -- also handle older PointBlur instance name --
+        local pb = Lighting:FindFirstChild("PointBlur")
+        if pb then pb.Enabled = enabled end
+    end)
+end
+
+local function spectatePlayer(name)
+    local target = Players:FindFirstChild(name)
+    if not target then
+        Notifier.new({ Title = "Spectate", Content = "Player not found: " .. name, Duration = 3 })
+        return
+    end
+
+    local humanoid = getSpectateHumanoid(target)
+    if not humanoid then
+        Notifier.new({ Title = "Spectate", Content = "Could not find humanoid for: " .. name, Duration = 3 })
+        return
+    end
+
+    workspace.CurrentCamera.CameraSubject = humanoid
+    Spectate.currentTarget = name
+    setMenuVisibility(false)
+    setBlurEnabled(false)
+
+    Notifier.new({ Title = "Spectate", Content = "Spectating: " .. name, Duration = 3 })
+end
+
+local function stopSpectating()
+    local char     = LocalPlayer.Character
+    local humanoid = char and char:FindFirstChildOfClass("Humanoid")
+    if humanoid then
+        workspace.CurrentCamera.CameraSubject = humanoid
+    end
+
+    setMenuVisibility(true)
+    setBlurEnabled(true)
+
+    if Spectate.lastLabel then
+        Spectate.lastLabel.TextColor3 = Spectate.DEFAULT_COLOR
+        Spectate.lastLabel = nil
+    end
+
+    if Spectate.currentTarget then
+        Notifier.new({ Title = "Spectate", Content = "Stopped spectating: " .. Spectate.currentTarget, Duration = 2 })
+    end
+
+    Spectate.currentTarget = nil
+    Spectate.lastTemplate  = nil
+end
+
+local function cycleSpectate(direction)
+    local list = {}
+    for _, p in ipairs(Players:GetPlayers()) do
+        if p ~= LocalPlayer then table.insert(list, p) end
+    end
+    if #list == 0 then return end
+
+    if not Spectate.currentTarget then
+        spectatePlayer(list[1].Name)
+        return
+    end
+
+    local idx = nil
+    for i, p in ipairs(list) do
+        if p.Name == Spectate.currentTarget then idx = i; break end
+    end
+
+    local nextIdx = ((( idx or 1) - 1 + direction) % #list) + 1
+
+    if Spectate.lastLabel then
+        Spectate.lastLabel.TextColor3 = Spectate.DEFAULT_COLOR
+        Spectate.lastLabel = nil
+        Spectate.lastTemplate = nil
+    end
+
+    spectatePlayer(list[nextIdx].Name)
+end
+
+-- In-game PlayerList click hook --
+local function connectTemplateClick(template)
+    -- Guard: never attach more than one handler to the same template object
+    if Spectate.connectedTemplates[template] then return end
+    Spectate.connectedTemplates[template] = true
+
+    local conn = template.MouseButton1Click:Connect(function()
+        local nameLabel = template:FindFirstChild("PlayerName")
+        if not nameLabel then return end
+
+        -- Resolve actual player name (label text may have clan/level prefixes)
+        local labelText = nameLabel.Text
+        local resolvedName = nil
+        for _, p in ipairs(Players:GetPlayers()) do
+            if p.Name == labelText or labelText:find(p.Name, 1, true) then
+                resolvedName = p.Name
+                break
+            end
+        end
+        if not resolvedName then return end
+
+        -- Stop spectating if already watching this player
+        if Spectate.currentTarget == resolvedName then
+            stopSpectating()
+            return
+        end
+
+        if Spectate.lastLabel then
+            Spectate.lastLabel.TextColor3 = Spectate.DEFAULT_COLOR
+        end
+
+        spectatePlayer(resolvedName)
+        Spectate.lastTemplate    = template
+        nameLabel.TextColor3     = Spectate.HIGHLIGHT_COLOR
+        Spectate.lastLabel       = nameLabel
+
+        -- Re-apply red highlight every 0.25s in case the game resets it
+        task.spawn(function()
+            while Spectate.currentTarget == resolvedName do
+                pcall(function()
+                    if nameLabel.TextColor3 ~= Spectate.HIGHLIGHT_COLOR then
+                        nameLabel.TextColor3 = Spectate.HIGHLIGHT_COLOR
+                    end
+                end)
+                task.wait(0.25)
+            end
+        end)
+    end)
+    table.insert(Spectate.connections, conn)
+end
+
+local function setupSpectateHooks()
+    for _, c in ipairs(Spectate.connections) do pcall(function() c:Disconnect() end) end
+    Spectate.connections        = {}
+    Spectate.connectedTemplates = {}
+
+    pcall(function()
+        local list = LocalPlayer
+            :WaitForChild("PlayerGui",   10)
+            :WaitForChild("ClientGui",   10)
+            :WaitForChild("Mainframe",   10)
+            :WaitForChild("PlayerList",  10)
+            :WaitForChild("List",        10)
+
+        for _, t in ipairs(list:GetChildren()) do
+            if t:IsA("ImageButton") and t.Name == "PlayerTemplate" then
+                connectTemplateClick(t)
+            end
+        end
+
+        table.insert(Spectate.connections, list.ChildAdded:Connect(function(child)
+            if child:IsA("ImageButton") and child.Name == "PlayerTemplate" then
+                task.wait(0.1)
+                connectTemplateClick(child)
+            end
+        end))
+    end)
+end
+
+-- Try to hook the PlayerList as soon as it exists, retrying every 0.5s --
+task.spawn(function()
+    for _ = 1, 20 do
+        task.wait(0.5)
+        setupSpectateHooks()
+        if #Spectate.connections > 0 then break end
+    end
+end)
+
+-- Persistent highlight monitor: scans every 0.5s and re-applies red color if it was reset by the game --
+task.spawn(function()
+    while true do
+        task.wait(0.5)
+        if not Spectate.currentTarget then continue end
+        pcall(function()
+            local pg  = LocalPlayer:FindFirstChild("PlayerGui")      if not pg  then return end
+            local cg  = pg:FindFirstChild("ClientGui")               if not cg  then return end
+            local mf  = cg:FindFirstChild("Mainframe")               if not mf  then return end
+            local pl  = mf:FindFirstChild("PlayerList")              if not pl  then return end
+            local lst = pl:FindFirstChild("List")                    if not lst then return end
+            for _, t in ipairs(lst:GetChildren()) do
+                if t:IsA("ImageButton") and t.Name == "PlayerTemplate" then
+                    local lbl = t:FindFirstChild("PlayerName")
+                    if lbl and lbl.Text:find(Spectate.currentTarget, 1, true) then
+                        if lbl.TextColor3 ~= Spectate.HIGHLIGHT_COLOR then
+                            lbl.TextColor3     = Spectate.HIGHLIGHT_COLOR
+                            Spectate.lastLabel = lbl
+                        end
+                        break
+                    end
+                end
+            end
+        end)
+    end
+end)
+
+LocalPlayer.CharacterAdded:Connect(function()
+    task.wait(1)
+    setupSpectateHooks()
+
+    if Spectate.currentTarget then
+        local savedTarget = Spectate.currentTarget
+        Spectate.currentTarget = nil
+        task.wait(0.5)
+        spectatePlayer(savedTarget)
+
+        -- Re-highlight in-game label after respawn --
+        pcall(function()
+            local list = LocalPlayer.PlayerGui.ClientGui.Mainframe.PlayerList.List
+            for _, t in ipairs(list:GetChildren()) do
+                if t:IsA("ImageButton") and t.Name == "PlayerTemplate" then
+                    local lbl = t:FindFirstChild("PlayerName")
+                    if lbl and lbl.Text == savedTarget then
+                        lbl.TextColor3        = Spectate.HIGHLIGHT_COLOR
+                        Spectate.lastLabel    = lbl
+                        Spectate.lastTemplate = t
+                        break
+                    end
+                end
+            end
+        end)
+    end
+end)
+
+-- ══════════════════════════════════════
+--         MISC FEATURE FUNCTIONS
+-- ══════════════════════════════════════
+
+-- Auto Pickup --
+local autoPickupConnection = nil
+
+local function autoPickup(state)
+    if not state then
+        if autoPickupConnection then
+            autoPickupConnection:Disconnect()
+            autoPickupConnection = nil
+        end
+        return
+    end
+
+    local params = OverlapParams.new()
+    params.FilterType = Enum.RaycastFilterType.Exclude
+    params.FilterDescendantsInstances = { LocalPlayer.Character }
+
+    local lastPickupTime = 0
+    autoPickupConnection = RunService.Heartbeat:Connect(function()
+        local now = tick()
+        if now - lastPickupTime < 0.5 then return end
+        lastPickupTime = now
+
+        local char = LocalPlayer.Character
+        if not char then return end
+        local hrp = char:FindFirstChild("HumanoidRootPart")
+        if not hrp then return end
+
+        params.FilterDescendantsInstances = { char }
+
+        local ok, parts = pcall(workspace.GetPartBoundsInBox, workspace, hrp.CFrame, Vector3.new(50, 50, 50), params)
+        if not ok then return end
+
+        for _, v in ipairs(parts) do
+            local distance = (v.Position - hrp.Position).Magnitude
+            if distance > 25 then continue end
+
+            if v:FindFirstChild("SpawnTime") and v:FindFirstChild("ItemDetector") then
+                pcall(fireclickdetector, v.ItemDetector)
+            elseif v:FindFirstChild("Pickupable") then
+                if not v:FindFirstChild("ItemDetector") and distance > 15 then continue end
+                local idValue = v:FindFirstChild("ID", true)
+                if idValue then
+                    pcall(function()
+                        ReplicatedStorage.Events.DataEvent:FireServer("PickUp", idValue.Value)
+                    end)
+                end
+            end
+        end
+    end)
+end
+
+-- Anti Void --
+local antiVoidDisabled = {}
+local antiVoidConn     = nil
+
+local function disableVoidPart(part)
+    if not part or not part:IsA("BasePart") then return end
+    if antiVoidDisabled[part] then return end
+    antiVoidDisabled[part] = true
+    pcall(function() part.CanTouch = false end)
+end
+
+local function antiVoid(state)
+    if antiVoidConn then
+        antiVoidConn:Disconnect()
+        antiVoidConn = nil
+    end
+
+    if not state then
+        for part in pairs(antiVoidDisabled) do
+            pcall(function() part.CanTouch = true end)
+        end
+        antiVoidDisabled = {}
+        return
+    end
+
+    -- Initial scan: Script named "Void" → disable CanTouch on its parent part
+    for _, obj in ipairs(workspace:GetDescendants()) do
+        if obj.ClassName == "Script" and obj.Name == "Void" then
+            disableVoidPart(obj.Parent)
+        end
+    end
+
+    -- Watch for new Void scripts added at runtime
+    antiVoidConn = workspace.DescendantAdded:Connect(function(obj)
+        if obj.ClassName == "Script" and obj.Name == "Void" then
+            task.defer(function() disableVoidPart(obj.Parent) end)
+        end
+    end)
+end
+
+-- Anti Burn --
+local antiBurnEnabled = false
+
+local function antiBurn(state)
+    antiBurnEnabled = state
+    if not state then return end
+
+    task.spawn(function()
+        while antiBurnEnabled do
+            pcall(function()
+                local ailments = ReplicatedStorage:FindFirstChild("Ailments")
+                if ailments then
+                    local playerFolder = ailments:FindFirstChild(LocalPlayer.Name)
+                    if playerFolder then
+                        local fire = playerFolder:FindFirstChild("Fire")
+                        if fire and fire:IsA("NumberValue") then
+                            ReplicatedStorage.Events.DataEvent:FireServer("RemoveFireAilment")
+                        end
+                    end
+                end
+            end)
+            task.wait(0.5)
+        end
+    end)
+end
+
+-- Auto Sell --
+local function sellAll(item)
+    Notifier:notify({ Title = "Auto Sell", Content = "Attempting to sell " .. item .. "s...", Duration = 2 })
+
+    local ok, err = pcall(function()
+        -- Search all common module sources
+        local sources = {}
+        if getrenv then table.insert(sources, getrenv()) end
+        if getgenv  then table.insert(sources, getgenv())  end
+        table.insert(sources, _G)
+        if shared   then table.insert(sources, shared)     end
+
+        local Common, Utils, Databases
+        for _, src in ipairs(sources) do
+            Common    = Common    or rawget(src, "Common")
+            Utils     = Utils     or rawget(src, "Utils")
+            Databases = Databases or rawget(src, "Databases")
+            if Common and Utils and Databases then break end
+        end
+
+        if not Common or not Utils or not Databases then
+            Notifier:notify({ Title = "Auto Sell", Content = "Game modules not found", Duration = 4 })
+            return
+        end
+
+        local plrData   = Utils.getPlrData()
+        local bulkPrice = Common.GameManager:calculateBulk(plrData.Inventory, plrData.Loadout, item, nil, "Sale")
+        local villages  = { "Sorythia", "Durana", "Rain", "none" }
+
+        if not bulkPrice then
+            Notifier:notify({ Title = "Auto Sell", Content = "Nothing to sell", Duration = 3 })
+            return
+        end
+
+        local offeredPrices = {}
+        for _, v in ipairs(villages) do
+            local price
+            if v == "none" then
+                price = bulkPrice
+            else
+                price = Common.GameManager:getModifiedPrice(
+                    bulkPrice,
+                    Utils.getVillageRelations(plrData.Village, v),
+                    Utils.getEconomy(v),
+                    "Sell"
+                )
+            end
+            table.insert(offeredPrices, { village = v, price = price })
+        end
+
+        table.sort(offeredPrices, function(a, b) return a.price > b.price end)
+        Databases.NPCs.bestVillage = offeredPrices[1].village
+
+        if item == "Fruit" then
+            local BEST = Databases.NPCs.Fruit[Databases.NPCs.bestVillage]
+            Common.DataFunction:InvokeServer("SellingBulk", offeredPrices[1].price, "Fruit", "Fish", BEST)
+        else
+            local BEST = Databases.NPCs.Trinket[Databases.NPCs.bestVillage]
+            Common.DataFunction:InvokeServer("SellingBulk", offeredPrices[1].price, item, BEST)
+        end
+
+        Notifier:notify({ Title = "Auto Sell", Content = "Sold all " .. item .. "s", Duration = 2 })
+    end)
+
+    if not ok then
+        Notifier:notify({ Title = "Auto Sell Error", Content = tostring(err), Duration = 6 })
+    end
+end
+
+-- Tree Jump Anything --
+local treeJumpEnabled = false
+local treeJumpAdded = {}
+
+local function treeJumpAnything(state)
+    treeJumpEnabled = state
+    if not state then
+        task.spawn(function()
+            local snapshot = treeJumpAdded
+            treeJumpAdded = {}
+            for i, obj in ipairs(snapshot) do
+                pcall(function()
+                    obj:SetAttribute("CanTreeJump", nil)
+                end)
+                if i % 200 == 0 then task.wait() end
+            end
+        end)
+        return
+    end
+
+    task.spawn(function()
+        local count = 0
+        for _, obj in ipairs(workspace:GetDescendants()) do
+            if not treeJumpEnabled then break end
+            if obj:GetAttribute("CanTreeJump") == nil then
+                pcall(function()
+                    obj:SetAttribute("CanTreeJump", true)
+                    table.insert(treeJumpAdded, obj)
+                end)
+            end
+            count += 1
+            if count % 200 == 0 then task.wait() end
+        end
+    end)
+end
+
+-- Infinite Jump Counter --
+local infinitestamina = false
+local infiniteStaminaHooked = false
+
+local function setupInfiniteStamina()
+    if infiniteStaminaHooked then return end
+    infiniteStaminaHooked = true
+
+    local infjumps
+    infjumps = hookmetamethod(game, "__namecall", function(self, ...)
+        local args = { ... }
+        local method = getnamecallmethod()
+        if tostring(self) == "DataEvent" and method == "FireServer" then
+            if args[1] == "Jump" and infinitestamina then
+                return nil
+            end
+        end
+        return infjumps(self, unpack(args))
+    end)
+end
+
+local function infiniteJumpCounter(state)
+    infinitestamina = state
+    if state and not infiniteStaminaHooked then
+        setupInfiniteStamina()
+    end
+end
+
+-- No Blindness --
+local noBlindnessEnabled = false
+
+local function noBlindness(state)
+    noBlindnessEnabled = state
+    if not state then
+        pcall(function()
+            local clientGui = LocalPlayer.PlayerGui:FindFirstChild("ClientGui")
+            if not clientGui then return end
+            for _, d in ipairs(clientGui:GetDescendants()) do
+                if d:IsA("ImageLabel") and d.Name:find("Blindness") then
+                    d.Visible = true
+                end
+            end
+        end)
+        return
+    end
+
+    task.spawn(function()
+        while noBlindnessEnabled do
+            pcall(function()
+                local clientGui = LocalPlayer.PlayerGui:FindFirstChild("ClientGui")
+                if not clientGui then return end
+                for _, d in ipairs(clientGui:GetDescendants()) do
+                    if d:IsA("ImageLabel") and d.Name:find("Blindness") then
+                        d.Visible = false
+                    end
+                end
+            end)
+            task.wait(0.5)
+        end
+    end)
+end
+
+-- Chakra Boost --
+local chakrabuffamount = 1
+local buffing = nil
+local respawning = nil
+
+local function chakraBoost(state)
+    if not state then
+        if buffing then buffing:Disconnect(); buffing = nil end
+        if respawning then respawning:Disconnect(); respawning = nil end
+        return
+    end
+
+    local function buffchakra()
+        local plr = LocalPlayer
+        local cooldown = false
+        local chakra = plr.Backpack:FindFirstChild("chakra")
+        if not chakra then return end
+
+        local startval = chakra.Value
+        buffing = chakra.Changed:Connect(function(newval)
+            if newval > startval then
+                if cooldown then return end
+                cooldown = true
+                if chakra.Value + chakrabuffamount < plr.Backpack.maxChakra.Value then
+                    ReplicatedStorage.Events.DataEvent:FireServer("TakeChakra", chakrabuffamount * -1)
+                    chakra.Value = chakra.Value + chakrabuffamount
+                end
+                startval = newval
+                task.wait(0.9)
+                cooldown = false
+            elseif startval > newval then
+                startval = newval
+            end
+        end)
+    end
+
+    buffchakra()
+    respawning = LocalPlayer.CharacterAdded:Connect(function()
+        task.wait(1)
+        buffchakra()
+    end)
+end
+
+-- ══════════════════════════════════════
+--              ESP SYSTEM
+-- ══════════════════════════════════════
+
+-- ESP state --
+local ESPSettings = {
+    Enabled      = false,
+    VillageColor = false,
+    Show = {
+        Name            = true,
+        Health          = true,
+        Distance        = true,
+        Bloodline       = false,
+        JutsuPrediction = false,
+        ShowAwakened    = false,
+        ShowReanimated  = false,
+        ShowCombatTimer = false,
+        ShowBlood       = false,
+        FreshyChecker   = false,
+        HealthBar       = false,
+    },
+    Color        = Color3.fromRGB(255, 255, 255),
+    TextSize        = 16,
+    TextDistance    = 1000,
+    TextFont        = 0,  -- Legacy
+    BoxEnabled      = false,
+    BoxSize         = 1,
+    BoxDistance     = 100,
+    HealthBarWidth  = 4,
+}
+
+local playerESPObjects  = {}  -- [Player] = { text, box[], connections[], cache{} }
+local jutsuConnections  = {}  -- [playerName] = { connections }
+local playerJutsuData   = {}  -- [playerName] = { activeJutsu, lastUpdate }
+
+-- ════ Jutsu Prediction ════ --
+
+local function setupJutsuPrediction(playerName)
+    if not playerJutsuData[playerName] then
+        playerJutsuData[playerName] = { activeJutsu = nil, lastUpdate = 0 }
+    end
+
+    local cooldownsFolder = ReplicatedStorage:FindFirstChild("Cooldowns")
+    if not cooldownsFolder then return end
+    local playerFolder = cooldownsFolder:FindFirstChild(playerName)
+    if not playerFolder then return end
+
+    if jutsuConnections[playerName] then
+        for _, c in pairs(jutsuConnections[playerName]) do pcall(function() c:Disconnect() end) end
+    end
+    jutsuConnections[playerName] = {}
+
+    local function watchAbility(child)
+        local name = child.Name
+        -- only fire on actual value changes, never on initial read
+        local conn = child:GetPropertyChangedSignal("Value"):Connect(function()
+            if child.Value > 0 then
+                playerJutsuData[playerName].activeJutsu = name
+                playerJutsuData[playerName].lastUpdate = tick()
+            end
+        end)
+        table.insert(jutsuConnections[playerName], conn)
+    end
+
+    for _, child in pairs(playerFolder:GetChildren()) do
+        if child:IsA("NumberValue") then watchAbility(child) end
+    end
+
+    local addedConn = playerFolder.ChildAdded:Connect(function(child)
+        if child:IsA("NumberValue") then
+            task.wait()
+            watchAbility(child)
+        end
+    end)
+    table.insert(jutsuConnections[playerName], addedConn)
+end
+
+local function initJutsuPrediction()
+    local cooldownsFolder = ReplicatedStorage:FindFirstChild("Cooldowns")
+    if not cooldownsFolder then return end
+
+    for _, folder in pairs(cooldownsFolder:GetChildren()) do
+        if folder:IsA("Folder") and folder.Name ~= LocalPlayer.Name then
+            setupJutsuPrediction(folder.Name)
+        end
+    end
+
+    cooldownsFolder.ChildAdded:Connect(function(folder)
+        if folder:IsA("Folder") and folder.Name ~= LocalPlayer.Name then
+            task.wait(0.1)
+            setupJutsuPrediction(folder.Name)
+        end
+    end)
+
+    cooldownsFolder.ChildRemoved:Connect(function(folder)
+        local n = folder.Name
+        if jutsuConnections[n] then
+            for _, c in pairs(jutsuConnections[n]) do pcall(function() c:Disconnect() end) end
+            jutsuConnections[n] = nil
+        end
+        playerJutsuData[n] = nil
+    end)
+end
+
+-- ════ Drawing helpers ════ --
+
+local function newESPText(color)
+    local t = Drawing.new("Text")
+    t.Visible  = false
+    t.Color    = color or Color3.fromRGB(255, 255, 255)
+    t.Size     = 16
+    t.Font     = 0  -- Legacy     default
+    t.Outline  = true
+    t.Center   = true
+    return t
+end
+
+local ESP_COLOR_JUTSU    = Color3.fromRGB(255, 220, 50)   -- yellow
+local ESP_COLOR_AWAKENED = Color3.fromRGB(180, 80, 255)   -- purple
+local ESP_LINE_HEIGHT    = 16
+
+local DrawingFonts = {
+    ["Legacy"]      = 0,
+    ["System"]      = 1,
+    ["Plex"]        = 2,
+    ["Monospace"]   = 3,
+}
+
+local function newESPHealthBar()
+    local sq = Drawing.new("Square")
+    sq.Visible   = false
+    sq.Filled    = true
+    sq.Thickness = 1
+    sq.Color     = Color3.fromRGB(255, 255, 255)
+    return sq
+end
+
+local function newESPBox()
+    local lines = {}
+    for i = 1, 4 do
+        local l = Drawing.new("Line")
+        l.Visible   = false
+        l.Thickness = 1
+        l.Color     = Color3.fromRGB(255, 255, 255)
+        lines[i] = l
+    end
+    return lines
+end
+
+local function setBoxVisible(box, v)
+    for _, l in ipairs(box) do l.Visible = v end
+end
+
+local function setBoxColor(box, c)
+    for _, l in ipairs(box) do l.Color = c end
+end
+
+local function drawBox(box, tl, tr, bl, br)
+    box[1].From = tl; box[1].To = tr  -- top edge
+    box[2].From = bl; box[2].To = br  -- bottom edge
+    box[3].From = tl; box[3].To = bl  -- left edge
+    box[4].From = tr; box[4].To = br  -- right edge
+    for _, l in ipairs(box) do l.Visible = true end
+end
+
+-- ════ Per-player ESP lifecycle ════ --
+
+local function getESPColor(player)
+    if ESPSettings.VillageColor and player.Team then
+        return player.Team.TeamColor.Color
+    end
+    return ESPSettings.Color
+end
+
+local function createPlayerESP(player)
+    if player == LocalPlayer or playerESPObjects[player] then return end
+
+    local conns = {}
+    local cache = {
+        bloodline = "", awakened = "", awakeningCooldown = 0,
+        combatTimer = 0, blood = 0,
+    }
+
+    -- ── Settings watchers (Bloodline, Awakened, AwakeningCooldown) ──
+    -- Wrapped in a function so it can be re-called on respawn in case the server recreates folders
+    local function hookSettings()
+        local settingsRoot = ReplicatedStorage:FindFirstChild("Settings")
+        if not settingsRoot then return end
+        local ps = settingsRoot:FindFirstChild(player.Name)
+        if not ps then
+            -- Watch for the folder to appear later
+            table.insert(conns, settingsRoot.ChildAdded:Connect(function(child)
+                if child.Name == player.Name then
+                    task.wait(0.1)
+                    hookSettings()
+                end
+            end))
+            return
+        end
+        local bl = ps:FindFirstChild("Bloodline")
+        if bl then
+            cache.bloodline = tostring(bl.Value)
+            table.insert(conns, bl:GetPropertyChangedSignal("Value"):Connect(function()
+                cache.bloodline = tostring(bl.Value)
+            end))
+        end
+        local aw = ps:FindFirstChild("Awakened")
+        if aw then
+            cache.awakened = tostring(aw.Value)
+            table.insert(conns, aw:GetPropertyChangedSignal("Value"):Connect(function()
+                cache.awakened = tostring(aw.Value)
+            end))
+        end
+        local awc = ps:FindFirstChild("AwakeningCooldown")
+        if awc then
+            cache.awakeningCooldown = awc.Value or 0
+            table.insert(conns, awc:GetPropertyChangedSignal("Value"):Connect(function()
+                cache.awakeningCooldown = awc.Value or 0
+            end))
+        end
+    end
+    hookSettings()
+
+    -- ── Combat Timer ──
+    local combatRoot = ReplicatedStorage:FindFirstChild("CombatTags")
+    if combatRoot then
+        local function hookCombat(folder)
+            local function refreshTimer()
+                local hi = 0
+                for _, v in ipairs(folder:GetChildren()) do
+                    if v:IsA("NumberValue") and v.Value > hi then hi = v.Value end
+                end
+                cache.combatTimer = hi
+            end
+            for _, v in ipairs(folder:GetChildren()) do
+                if v:IsA("NumberValue") then
+                    table.insert(conns, v:GetPropertyChangedSignal("Value"):Connect(refreshTimer))
+                end
+            end
+            table.insert(conns, folder.ChildAdded:Connect(function(v)
+                if v:IsA("NumberValue") then
+                    task.wait()
+                    refreshTimer()  -- immediate read when combat tag appears
+                    table.insert(conns, v:GetPropertyChangedSignal("Value"):Connect(refreshTimer))
+                end
+            end))
+            table.insert(conns, folder.ChildRemoved:Connect(function()
+                task.wait()
+                refreshTimer()  -- refresh when combat tag is removed
+            end))
+            refreshTimer()
+        end
+        local pf = combatRoot:FindFirstChild(player.Name)
+        if pf then
+            hookCombat(pf)
+        else
+            table.insert(conns, combatRoot.ChildAdded:Connect(function(child)
+                if child.Name == player.Name then
+                    task.wait(0.1)
+                    hookCombat(child)
+                end
+            end))
+        end
+    end
+
+    -- ── Blood (re-hook on respawn) ──
+    local function hookBlood()
+        local bp = player:FindFirstChild("Backpack")
+        if not bp then return end
+        local bv = bp:FindFirstChild("blood")
+        if not bv then return end
+        cache.blood = bv.Value
+        table.insert(conns, bv:GetPropertyChangedSignal("Value"):Connect(function()
+            cache.blood = bv.Value
+        end))
+    end
+    hookBlood()
+    table.insert(conns, player.CharacterAdded:Connect(function()
+        task.wait(1)
+        hookBlood()
+        hookSettings()  -- re-hook in case server recreated the settings folder
+    end))
+
+    playerESPObjects[player] = {
+        mainText     = newESPText(),
+        awakenedText = newESPText(ESP_COLOR_AWAKENED),
+        jutsuText    = newESPText(ESP_COLOR_JUTSU),
+        distanceText = newESPText(),
+        box          = newESPBox(),
+        healthBarBG  = newESPHealthBar(),
+        healthBar    = newESPHealthBar(),
+        conns        = conns,
+        cache        = cache,
+    }
+end
+
+local function destroyPlayerESP(player)
+    local data = playerESPObjects[player]
+    if not data then return end
+    data.mainText:Remove()
+    data.awakenedText:Remove()
+    data.jutsuText:Remove()
+    data.distanceText:Remove()
+    setBoxVisible(data.box, false)
+    for _, l in ipairs(data.box) do l:Remove() end
+    data.healthBarBG:Remove()
+    data.healthBar:Remove()
+    for _, c in ipairs(data.conns) do pcall(function() c:Disconnect() end) end
+    local n = player.Name
+    if jutsuConnections[n] then
+        for _, c in pairs(jutsuConnections[n]) do pcall(function() c:Disconnect() end) end
+        jutsuConnections[n] = nil
+    end
+    playerJutsuData[n] = nil
+    playerESPObjects[player] = nil
+end
+
+local function destroyAllPlayerESP()
+    for p in pairs(playerESPObjects) do destroyPlayerESP(p) end
+end
+
+-- ════ Render loop ════ --
+
+local espRenderConn = nil
+
+local function startESPLoop()
+    if espRenderConn then return end
+    espRenderConn = RunService.RenderStepped:Connect(function()
+        if not ESPSettings.Enabled then return end
+        local camera   = workspace.CurrentCamera
+        local camPos   = camera.CFrame.Position
+        local show     = ESPSettings.Show
+        local textSize = ESPSettings.TextSize
+        local textFont = ESPSettings.TextFont
+
+        for player, data in pairs(playerESPObjects) do
+            local char     = player.Character
+            local hrp      = char and char:FindFirstChild("HumanoidRootPart")
+            local humanoid = char and char:FindFirstChildOfClass("Humanoid")
+
+            if not hrp or not humanoid or humanoid.Health <= 0 then
+                data.mainText.Visible     = false
+                data.awakenedText.Visible = false
+                data.jutsuText.Visible    = false
+                data.distanceText.Visible = false
+                setBoxVisible(data.box, false)
+                data.healthBarBG.Visible  = false
+                data.healthBar.Visible    = false
+                continue
+            end
+
+            local worldPos         = hrp.Position
+            local dist             = (worldPos - camPos).Magnitude
+            local sp, onScreen     = camera:WorldToViewportPoint(worldPos + Vector3.new(0, 3.2, 0))
+
+            if not onScreen then
+                data.mainText.Visible     = false
+                data.awakenedText.Visible = false
+                data.jutsuText.Visible    = false
+                data.distanceText.Visible = false
+                setBoxVisible(data.box, false)
+                data.healthBarBG.Visible  = false
+                data.healthBar.Visible    = false
+                continue
+            end
+
+            local color = getESPColor(player)
+            local cache = data.cache
+            local cx    = sp.X
+            local baseY = sp.Y
+
+            -- Apply live text properties --
+            data.mainText.Size     = textSize
+            data.awakenedText.Size = textSize
+            data.jutsuText.Size    = textSize
+            data.distanceText.Size = textSize
+            data.mainText.Font     = textFont
+            data.awakenedText.Font = textFont
+            data.jutsuText.Font    = textFont
+            data.distanceText.Font = textFont
+
+            local textVisible = dist <= ESPSettings.TextDistance
+
+            -- Pre-compute box screen coords (shared by box, health bar, and distance text) --
+            local sz    = ESPSettings.BoxSize
+            local topSP = camera:WorldToViewportPoint(worldPos + Vector3.new(0,  2.8 * sz, 0))
+            local botSP = camera:WorldToViewportPoint(worldPos + Vector3.new(0, -2.8 * sz, 0))
+            local boxH  = math.abs(botSP.Y - topSP.Y)
+            local boxW  = boxH * 0.35
+            local boxVisible = ESPSettings.BoxEnabled and dist <= ESPSettings.BoxDistance
+
+            -- ── Main line: Name | HP HP | Bloodline | Reanimated | Freshy | CTs | Blood% ──
+            local parts = {}
+            if show.Name then
+                table.insert(parts, player.Name)
+            end
+            if show.Health then
+                table.insert(parts, string.format("%d/%d HP", math.floor(humanoid.Health), math.floor(humanoid.MaxHealth)))
+            end
+            if show.Bloodline and cache.bloodline ~= "" then
+                table.insert(parts, cache.bloodline)
+            end
+            if show.ShowReanimated and char:GetAttribute("Reanimated") then
+                table.insert(parts, "Reanimated")
+            end
+            if show.FreshyChecker then
+                local dn = humanoid.DisplayName
+                if dn and dn:find("🌱", 1, true) then
+                    table.insert(parts, "Freshy")
+                end
+            end
+            if show.ShowBlood then
+                table.insert(parts, math.floor(cache.blood) .. "%")
+            end
+            if show.ShowCombatTimer and cache.combatTimer > 1 then
+                table.insert(parts, math.floor(cache.combatTimer) .. "s")
+            end
+
+            if textVisible and #parts > 0 then
+                data.mainText.Text     = table.concat(parts, " | ")
+                data.mainText.Position = Vector2.new(cx, baseY)
+                data.mainText.Color    = color
+                data.mainText.Visible  = true
+            else
+                data.mainText.Visible = false
+            end
+
+            -- ── Awakened line: [Form] [Xs] in purple, one line above main ──
+            local awakenedStr     = cache.awakened
+            local hasForm         = awakenedStr ~= "" and awakenedStr ~= "false" and awakenedStr ~= "nil"
+            local hasCooldown     = cache.awakeningCooldown and cache.awakeningCooldown > 0
+            local showAwakened    = show.ShowAwakened and (hasForm or hasCooldown)
+            if showAwakened and textVisible then
+                local awakenedDisplay
+                if hasForm then
+                    awakenedDisplay = "[" .. awakenedStr .. "]"
+                    if hasCooldown then
+                        awakenedDisplay = awakenedDisplay .. " [" .. math.floor(cache.awakeningCooldown) .. "s]"
+                    end
+                else
+                    awakenedDisplay = "[" .. math.floor(cache.awakeningCooldown) .. "s]"
+                end
+                data.awakenedText.Text     = awakenedDisplay
+                data.awakenedText.Position = Vector2.new(cx, baseY - ESP_LINE_HEIGHT)
+                data.awakenedText.Visible  = true
+            else
+                data.awakenedText.Visible = false
+                showAwakened = false
+            end
+
+            -- ── Jutsu line (yellow, above awakened or main) ──
+            local jutsuOffset = showAwakened and (ESP_LINE_HEIGHT * 2) or ESP_LINE_HEIGHT
+            if show.JutsuPrediction and textVisible then
+                local jd = playerJutsuData[player.Name]
+                if jd and jd.activeJutsu and (tick() - jd.lastUpdate) < 5 then
+                    data.jutsuText.Text     = "[" .. jd.activeJutsu .. "]"
+                    data.jutsuText.Position = Vector2.new(cx, baseY - jutsuOffset)
+                    data.jutsuText.Visible  = true
+                else
+                    data.jutsuText.Visible = false
+                end
+            else
+                data.jutsuText.Visible = false
+            end
+
+            -- ── Box ESP ──
+            if boxVisible then
+                drawBox(data.box,
+                    Vector2.new(cx - boxW, topSP.Y), Vector2.new(cx + boxW, topSP.Y),
+                    Vector2.new(cx - boxW, botSP.Y), Vector2.new(cx + boxW, botSP.Y))
+                setBoxColor(data.box, color)
+            else
+                setBoxVisible(data.box, false)
+            end
+
+            -- ── Health Bar (vertical filled bar, left of box) ──
+            if show.HealthBar then
+                local hpRatio  = math.clamp(humanoid.Health / humanoid.MaxHealth, 0, 1)
+                local barColor = Color3.fromRGB(
+                    math.floor(255 * (1 - hpRatio)),
+                    math.floor(255 * hpRatio),
+                    0
+                )
+                local bw     = ESPSettings.HealthBarWidth
+                local barX   = cx - boxW - bw - 3
+                local fillH  = math.max(1, boxH * hpRatio)
+
+                data.healthBarBG.Size     = Vector2.new(bw, boxH)
+                data.healthBarBG.Position = Vector2.new(barX, topSP.Y)
+                data.healthBarBG.Color    = Color3.fromRGB(40, 40, 40)
+                data.healthBarBG.Visible  = true
+
+                data.healthBar.Size     = Vector2.new(bw, fillH)
+                data.healthBar.Position = Vector2.new(barX, botSP.Y - fillH)
+                data.healthBar.Color    = barColor
+                data.healthBar.Visible  = true
+            else
+                data.healthBarBG.Visible = false
+                data.healthBar.Visible   = false
+            end
+
+            -- ── Distance text (below box when box visible, else below main text) ──
+            if show.Distance and textVisible then
+                local distY = boxVisible and (botSP.Y + 4) or (baseY + ESP_LINE_HEIGHT)
+                data.distanceText.Text     = string.format("%.0fm", dist)
+                data.distanceText.Position = Vector2.new(cx, distY)
+                data.distanceText.Color    = color
+                data.distanceText.Visible  = true
+            else
+                data.distanceText.Visible = false
+            end
+        end
+    end)
+end
+
+local function stopESPLoop()
+    if espRenderConn then espRenderConn:Disconnect(); espRenderConn = nil end
+end
+
+local function setPlayerESP(enabled)
+    ESPSettings.Enabled = enabled
+    if enabled then
+        for _, p in ipairs(Players:GetPlayers()) do createPlayerESP(p) end
+        if ESPSettings.Show.JutsuPrediction then initJutsuPrediction() end
+        startESPLoop()
+    else
+        destroyAllPlayerESP()
+        stopESPLoop()
+    end
+end
+
+Players.PlayerAdded:Connect(function(p)
+    if ESPSettings.Enabled then createPlayerESP(p) end
+end)
+Players.PlayerRemoving:Connect(function(p)
+    destroyPlayerESP(p)
+end)
+
+-- ══════════════════════════════════════
+--             MOB ESP SYSTEM
+-- ══════════════════════════════════════
+
+local MobESPSettings = {
+    Enabled      = false,
+    Show = {
+        Name     = true,
+        Health   = true,
+        Distance = true,
+    },
+    Color        = Color3.fromRGB(255, 100, 100),
+    TextSize     = 14,
+    TextDistance = 1000,
+}
+
+local mobESPObjects = {}  -- [Model] = { mainText, distanceText }
+local mobRenderConn = nil
+local mobDescConn   = nil
+
+local function isMobModel(model)
+    for _, p in ipairs(Players:GetPlayers()) do
+        if p.Character == model then return false end
+    end
+    local npc = model:FindFirstChild("NPC")
+    if npc and npc:IsA("StringValue") and npc.Value == "Combat" then
+        return true
+    end
+    local wb = model:FindFirstChild("WorldBoss")
+    if wb and wb:IsA("BoolValue") then
+        return true
+    end
+    return false
+end
+
+local function createMobESP(model)
+    if mobESPObjects[model] then return end
+    local humanoid = model:FindFirstChildOfClass("Humanoid")
+    local hrp      = model:FindFirstChild("HumanoidRootPart")
+    if not humanoid or not hrp then return end
+    mobESPObjects[model] = {
+        mainText     = newESPText(MobESPSettings.Color),
+        distanceText = newESPText(MobESPSettings.Color),
+    }
+end
+
+local function destroyMobESP(model)
+    local data = mobESPObjects[model]
+    if not data then return end
+    data.mainText:Remove()
+    data.distanceText:Remove()
+    mobESPObjects[model] = nil
+end
+
+local function destroyAllMobESP()
+    for m in pairs(mobESPObjects) do destroyMobESP(m) end
+end
+
+local function startMobESPLoop()
+    if mobRenderConn then return end
+    mobRenderConn = RunService.RenderStepped:Connect(function()
+        if not MobESPSettings.Enabled then return end
+        local camera   = workspace.CurrentCamera
+        local camPos   = camera.CFrame.Position
+        local show     = MobESPSettings.Show
+        local textSize = MobESPSettings.TextSize
+        local textFont = ESPSettings.TextFont  -- shared with player ESP
+        local color    = MobESPSettings.Color
+
+        local toCleanup = {}
+        for model, data in pairs(mobESPObjects) do
+            if not model.Parent then
+                table.insert(toCleanup, model)
+                data.mainText.Visible     = false
+                data.distanceText.Visible = false
+                continue
+            end
+
+            local humanoid = model:FindFirstChildOfClass("Humanoid")
+            local hrp      = model:FindFirstChild("HumanoidRootPart")
+
+            if not hrp or not humanoid or humanoid.Health <= 0 then
+                data.mainText.Visible     = false
+                data.distanceText.Visible = false
+                continue
+            end
+
+            local worldPos     = hrp.Position
+            local dist         = (worldPos - camPos).Magnitude
+            local sp, onScreen = camera:WorldToViewportPoint(worldPos + Vector3.new(0, 3.2, 0))
+
+            if not onScreen or dist > MobESPSettings.TextDistance then
+                data.mainText.Visible     = false
+                data.distanceText.Visible = false
+                continue
+            end
+
+            data.mainText.Size      = textSize
+            data.mainText.Font      = textFont
+            data.mainText.Color     = color
+            data.distanceText.Size  = textSize
+            data.distanceText.Font  = textFont
+            data.distanceText.Color = color
+
+            local cx    = sp.X
+            local baseY = sp.Y
+
+            local parts = {}
+            if show.Name then
+                table.insert(parts, model.Name)
+            end
+            if show.Health then
+                table.insert(parts, string.format("%d/%d HP", math.floor(humanoid.Health), math.floor(humanoid.MaxHealth)))
+            end
+
+            if #parts > 0 then
+                data.mainText.Text     = table.concat(parts, " | ")
+                data.mainText.Position = Vector2.new(cx, baseY)
+                data.mainText.Visible  = true
+            else
+                data.mainText.Visible = false
+            end
+
+            if show.Distance then
+                data.distanceText.Text     = string.format("%.0fm", dist)
+                data.distanceText.Position = Vector2.new(cx, baseY + ESP_LINE_HEIGHT)
+                data.distanceText.Visible  = true
+            else
+                data.distanceText.Visible = false
+            end
+        end
+
+        for _, m in ipairs(toCleanup) do destroyMobESP(m) end
+    end)
+end
+
+local function stopMobESPLoop()
+    if mobRenderConn then mobRenderConn:Disconnect(); mobRenderConn = nil end
+end
+
+local function setMobESP(enabled)
+    MobESPSettings.Enabled = enabled
+    if enabled then
+        for _, desc in ipairs(workspace:GetDescendants()) do
+            if desc:IsA("Humanoid") then
+                local model = desc.Parent
+                if model and model:IsA("Model") and model:FindFirstChild("HumanoidRootPart") and isMobModel(model) then
+                    createMobESP(model)
+                end
+            end
+        end
+
+        mobDescConn = workspace.DescendantAdded:Connect(function(desc)
+            if not MobESPSettings.Enabled then return end
+            local model = nil
+            if desc:IsA("Humanoid") then
+                model = desc.Parent
+            elseif (desc:IsA("StringValue") and desc.Name == "NPC")
+                or (desc:IsA("BoolValue") and desc.Name == "WorldBoss") then
+                model = desc.Parent
+            end
+            if model and model:IsA("Model") and model:FindFirstChild("HumanoidRootPart") then
+                task.wait()
+                if isMobModel(model) then createMobESP(model) end
+            end
+        end)
+
+        startMobESPLoop()
+    else
+        if mobDescConn then mobDescConn:Disconnect(); mobDescConn = nil end
+        destroyAllMobESP()
+        stopMobESPLoop()
+    end
+end
+
+-- ══════════════════════════════════════
+--           OTHER ESP SYSTEM
+-- ══════════════════════════════════════
+
+local OtherESPSettings = {
+    NPC         = false,
+    Grabable    = false,
+    Weapon      = false,
+    EventWeapon = false,
+    Rift        = false,
+    Chakra      = false,
+    Corrupted   = false,
+    TextSize     = 14,
+    TextDistance = 1000,
+}
+
+local otherNPCObjects       = {}
+local otherGrabObjects      = {}
+local otherWeaponObjects    = {}
+local otherEventWObjects    = {}
+local otherRiftObjects      = {}
+local otherChakraObjects    = {}
+local otherCorruptedObjects = {}
+local otherRenderConn       = nil
+local otherDescConn         = nil
+
+local WEAPON_NAMES = {
+    ["Kusanagi"] = true, ["Adamantine Staff"] = true,
+    ["Executioner's Blade"] = true, ["Samehada"] = true,
+    ["Gunbai"] = true, ["Raijin Kunai"] = true,
+}
+
+local EVENT_WEAPON_NAMES = {
+    ["Bloody Executioner"] = true, ["Frozen Executioner"] = true,
+    ["Pumpkin Samehada"] = true,   ["Tree Samehada"] = true,
+    ["Spooky Raijin"] = true,      ["Nutcracker Raijin"] = true,
+    ["Spider Gunbai"] = true,      ["Gingerbread Gunbai"] = true,
+    ["Hallowed Kusanagi"] = true,  ["Candy Cane Kusanagi"] = true,
+    ["Skeletal Staff"] = true,     ["Jingle Bell Staff"] = true,
+}
+
+local function getObjPos(obj)
+    if obj:IsA("Model") then
+        local hrp = obj:FindFirstChild("HumanoidRootPart")
+        if hrp then return hrp.Position end
+        local ok, cf = pcall(function() return obj:GetBoundingBox() end)
+        if ok and cf then return cf.Position end
+        return nil
+    end
+    return obj.Position
+end
+
+local function isPlayerModelCheck(model)
+    for _, p in ipairs(Players:GetPlayers()) do
+        if p.Character == model then return true end
+    end
+    return false
+end
+
+local function isDialogNPC(obj)
+    if not obj:IsA("Model") then return false end
+    if isPlayerModelCheck(obj) then return false end
+    local npc = obj:FindFirstChild("NPC")
+    return npc and npc:IsA("StringValue") and npc.Value == "Dialog"
+end
+
+local function createNPCESP(obj)
+    if otherNPCObjects[obj] then return end
+    otherNPCObjects[obj] = newESPText(Color3.fromRGB(100, 200, 255))
+end
+
+local function destroyNPCESP(obj)
+    local t = otherNPCObjects[obj]
+    if not t then return end
+    t:Remove(); otherNPCObjects[obj] = nil
+end
+
+local function isGrabable(obj)
+    if not (obj:IsA("MeshPart") or obj:IsA("Part")) then return false end
+    local pick = obj:FindFirstChild("Pickupable")
+    return pick and pick:IsA("StringValue")
+end
+
+local function createGrabESP(obj)
+    if otherGrabObjects[obj] then return end
+    otherGrabObjects[obj] = newESPText(Color3.fromRGB(255, 220, 50))
+end
+
+local function destroyGrabESP(obj)
+    local t = otherGrabObjects[obj]
+    if not t then return end
+    t:Remove(); otherGrabObjects[obj] = nil
+end
+
+local function isInPlayerCharacter(obj)
+    local ancestor = obj.Parent
+    while ancestor and ancestor ~= workspace do
+        for _, p in ipairs(Players:GetPlayers()) do
+            if p.Character == ancestor then return true end
+        end
+        ancestor = ancestor.Parent
+    end
+    return false
+end
+
+-- ── Unstable Rift ──
+local function isRift(obj)
+    local folder = workspace:FindFirstChild("Rifts")
+    return folder and obj.Parent == folder
+end
+
+local function createRiftESP(obj)
+    if otherRiftObjects[obj] then return end
+    otherRiftObjects[obj] = newESPText(Color3.fromRGB(180, 80, 255))
+end
+
+local function destroyRiftESP(obj)
+    local t = otherRiftObjects[obj]
+    if not t then return end
+    t:Remove(); otherRiftObjects[obj] = nil
+end
+
+-- ── Chakra Point ──
+local function isChakraPoint(obj)
+    if not obj:IsA("Model") then return false end
+    local folder = workspace:FindFirstChild("ChakraPoints")
+    return folder and obj.Parent == folder
+end
+
+local function createChakraESP(obj)
+    if otherChakraObjects[obj] then return end
+    otherChakraObjects[obj] = newESPText(Color3.fromRGB(50, 220, 255))
+end
+
+local function destroyChakraESP(obj)
+    local t = otherChakraObjects[obj]
+    if not t then return end
+    t:Remove(); otherChakraObjects[obj] = nil
+end
+
+-- ── Corrupted Point ──
+local function isCorruptedPoint(obj)
+    return obj:IsA("Model") and obj.Name == "CorruptedPoint"
+end
+
+local function createCorruptedESP(obj)
+    if otherCorruptedObjects[obj] then return end
+    otherCorruptedObjects[obj] = newESPText(Color3.fromRGB(255, 60, 60))
+end
+
+local function destroyCorruptedESP(obj)
+    local t = otherCorruptedObjects[obj]
+    if not t then return end
+    t:Remove(); otherCorruptedObjects[obj] = nil
+end
+
+local function isTopLevelNamed(obj, nameSet)
+    if not nameSet[obj.Name] then return false end
+    if not (obj:IsA("Part") or obj:IsA("MeshPart") or obj:IsA("Model")) then return false end
+    if isInPlayerCharacter(obj) then return false end
+    local par = obj.Parent
+    if par and (par:IsA("Part") or par:IsA("MeshPart") or par:IsA("Model")) and nameSet[par.Name] then
+        return false
+    end
+    return true
+end
+
+local function createWeaponESP(obj)
+    if otherWeaponObjects[obj] then return end
+    otherWeaponObjects[obj] = newESPText(Color3.fromRGB(255, 165, 50))
+end
+
+local function destroyWeaponESP(obj)
+    local t = otherWeaponObjects[obj]
+    if not t then return end
+    t:Remove(); otherWeaponObjects[obj] = nil
+end
+
+local function createEventWeaponESP(obj)
+    if otherEventWObjects[obj] then return end
+    otherEventWObjects[obj] = newESPText(Color3.fromRGB(255, 100, 255))
+end
+
+local function destroyEventWeaponESP(obj)
+    local t = otherEventWObjects[obj]
+    if not t then return end
+    t:Remove(); otherEventWObjects[obj] = nil
+end
+
+local function startOtherESPLoop()
+    if otherRenderConn then return end
+    otherRenderConn = RunService.RenderStepped:Connect(function()
+        local camera   = workspace.CurrentCamera
+        local camPos   = camera.CFrame.Position
+        local textSize = OtherESPSettings.TextSize
+        local textFont = ESPSettings.TextFont
+        local maxDist  = OtherESPSettings.TextDistance
+
+        local function renderTable(tbl, enabled, destroyFn, textFn, shouldRemoveFn)
+            local toClean = {}
+            for obj, label in pairs(tbl) do
+                if not obj.Parent or (shouldRemoveFn and shouldRemoveFn(obj)) then
+                    label.Visible = false
+                    table.insert(toClean, obj)
+                    continue
+                end
+                if not enabled then label.Visible = false; continue end
+                local pos = getObjPos(obj)
+                if not pos then label.Visible = false; continue end
+                local dist = (pos - camPos).Magnitude
+                local sp, onScreen = camera:WorldToViewportPoint(pos + Vector3.new(0, 2, 0))
+                if not onScreen or dist > maxDist then label.Visible = false; continue end
+                label.Size     = textSize
+                label.Font     = textFont
+                label.Text     = textFn and textFn(obj, dist) or string.format("%s  %.0fm", obj.Name, dist)
+                label.Position = Vector2.new(sp.X, sp.Y)
+                label.Visible  = true
+            end
+            for _, o in ipairs(toClean) do destroyFn(o) end
+        end
+
+        renderTable(otherNPCObjects,    OtherESPSettings.NPC,         destroyNPCESP)
+        renderTable(otherGrabObjects,   OtherESPSettings.Grabable,    destroyGrabESP)
+        renderTable(otherWeaponObjects, OtherESPSettings.Weapon,      destroyWeaponESP)
+        renderTable(otherEventWObjects, OtherESPSettings.EventWeapon, destroyEventWeaponESP)
+        renderTable(otherRiftObjects, OtherESPSettings.Rift, destroyRiftESP, function(obj, dist)
+            local id = obj:GetAttribute("ID")
+            return string.format("%s [%s]\n%.0fm", obj.Name, tostring(id or "?"), dist)
+        end)
+        renderTable(otherChakraObjects, OtherESPSettings.Chakra, destroyChakraESP, function(obj, dist)
+            local pnVal = obj:FindFirstChild("PointName")
+            local ulVal = obj:FindFirstChild("Unlocked")
+            local name  = (pnVal and pnVal.Value ~= "") and pnVal.Value or obj.Name
+            local tag   = (ulVal and ulVal.Value == false) and " [X]" or ""
+            return string.format("%s%s\n%.0fm", name, tag, dist)
+        end)
+        renderTable(otherCorruptedObjects, OtherESPSettings.Corrupted, destroyCorruptedESP, function(obj, dist)
+            local hVal   = obj:FindFirstChild("Health")
+            local hp     = math.floor(100 - (hVal and hVal.Value or 0))
+            return string.format("%s [%d/100]\n%.0fm", obj.Name, hp, dist)
+        end, function(obj)
+            local d = obj:FindFirstChild("Destroyed")
+            return d and d:IsA("BoolValue") and d.Value == true
+        end)
+    end)
+end
+
+local function stopOtherESPLoop()
+    if otherRenderConn then otherRenderConn:Disconnect(); otherRenderConn = nil end
+end
+
+local function isAnyOtherESPEnabled()
+    return OtherESPSettings.NPC or OtherESPSettings.Grabable
+        or OtherESPSettings.Weapon or OtherESPSettings.EventWeapon
+        or OtherESPSettings.Rift or OtherESPSettings.Chakra
+        or OtherESPSettings.Corrupted
+end
+
+local function hookOtherDescendants()
+    if otherDescConn then otherDescConn:Disconnect() end
+    otherDescConn = workspace.DescendantAdded:Connect(function(obj)
+        task.wait()
+        if OtherESPSettings.NPC         and isDialogNPC(obj)                        then createNPCESP(obj)         end
+        if OtherESPSettings.Grabable    and isGrabable(obj)                          then createGrabESP(obj)        end
+        if OtherESPSettings.Weapon      and isTopLevelNamed(obj, WEAPON_NAMES)       then createWeaponESP(obj)      end
+        if OtherESPSettings.EventWeapon and isTopLevelNamed(obj, EVENT_WEAPON_NAMES) then createEventWeaponESP(obj) end
+        if OtherESPSettings.Rift        and isRift(obj)                              then createRiftESP(obj)        end
+        if OtherESPSettings.Chakra      and isChakraPoint(obj)                       then createChakraESP(obj)      end
+        if OtherESPSettings.Corrupted   and isCorruptedPoint(obj)                    then createCorruptedESP(obj)   end
+    end)
+end
+
+local function updateOtherHooks()
+    if isAnyOtherESPEnabled() then
+        hookOtherDescendants()
+        startOtherESPLoop()
+    else
+        if otherDescConn then otherDescConn:Disconnect(); otherDescConn = nil end
+        stopOtherESPLoop()
+    end
+end
+
+local function setRiftESP(enabled)
+    OtherESPSettings.Rift = enabled
+    if enabled then
+        local folder = workspace:FindFirstChild("Rifts")
+        if folder then
+            for _, child in ipairs(folder:GetChildren()) do createRiftESP(child) end
+        end
+    else
+        for o in pairs(otherRiftObjects) do destroyRiftESP(o) end
+    end
+    updateOtherHooks()
+end
+
+local function setChakraESP(enabled)
+    OtherESPSettings.Chakra = enabled
+    if enabled then
+        local folder = workspace:FindFirstChild("ChakraPoints")
+        if folder then
+            for _, child in ipairs(folder:GetChildren()) do
+                if child:IsA("Model") then createChakraESP(child) end
+            end
+        end
+    else
+        for o in pairs(otherChakraObjects) do destroyChakraESP(o) end
+    end
+    updateOtherHooks()
+end
+
+local function setCorruptedESP(enabled)
+    OtherESPSettings.Corrupted = enabled
+    if enabled then
+        for _, obj in ipairs(workspace:GetDescendants()) do
+            if isCorruptedPoint(obj) then createCorruptedESP(obj) end
+        end
+    else
+        for o in pairs(otherCorruptedObjects) do destroyCorruptedESP(o) end
+    end
+    updateOtherHooks()
+end
+
+local function setNPCESP(enabled)
+    OtherESPSettings.NPC = enabled
+    if enabled then
+        for _, obj in ipairs(workspace:GetDescendants()) do
+            if isDialogNPC(obj) then createNPCESP(obj) end
+        end
+    else
+        for o in pairs(otherNPCObjects) do destroyNPCESP(o) end
+    end
+    updateOtherHooks()
+end
+
+local function setGrabableESP(enabled)
+    OtherESPSettings.Grabable = enabled
+    if enabled then
+        for _, obj in ipairs(workspace:GetDescendants()) do
+            if isGrabable(obj) then createGrabESP(obj) end
+        end
+    else
+        for o in pairs(otherGrabObjects) do destroyGrabESP(o) end
+    end
+    updateOtherHooks()
+end
+
+local function setWeaponESP(enabled)
+    OtherESPSettings.Weapon = enabled
+    if enabled then
+        for _, obj in ipairs(workspace:GetDescendants()) do
+            if isTopLevelNamed(obj, WEAPON_NAMES) then createWeaponESP(obj) end
+        end
+    else
+        for o in pairs(otherWeaponObjects) do destroyWeaponESP(o) end
+    end
+    updateOtherHooks()
+end
+
+local function setEventWeaponESP(enabled)
+    OtherESPSettings.EventWeapon = enabled
+    if enabled then
+        for _, obj in ipairs(workspace:GetDescendants()) do
+            if isTopLevelNamed(obj, EVENT_WEAPON_NAMES) then createEventWeaponESP(obj) end
+        end
+    else
+        for o in pairs(otherEventWObjects) do destroyEventWeaponESP(o) end
+    end
+    updateOtherHooks()
+end
+
+-- ══════════════════════════════════════
+--           FRUIT ESP SYSTEM
+-- ══════════════════════════════════════
+
+local FruitESPSettings = {
+    Enabled      = false,
+    FruitTree    = false,
+    Selected     = {},
+    TextSize     = 16,
+    TextDistance = 1000,
+}
+
+local FRUIT_NAMES = {
+    "Chakra Fruit", "Life Up Fruit", "Fruit Of Forgetfulness",
+    "Apple", "Alluring Apple", "Banana", "Mango", "Pear", "Orange",
+}
+
+local FRUIT_COLORS = {
+    ["Life Up Fruit"]          = Color3.fromRGB(0,   255, 0),
+    ["Chakra Fruit"]           = Color3.fromRGB(255, 100, 255),
+    ["Fruit Of Forgetfulness"] = Color3.fromRGB(255, 90,  90),
+}
+
+local fruitESPObjects     = {}  -- [obj] = { label, name }
+local fruitTreeESPObjects = {}  -- [model] = label
+local fruitRenderConn     = nil
+local fruitDescConn       = nil
+
+local function isFruitSelected(fruitName)
+    local sel = FruitESPSettings.Selected
+    if sel[fruitName] ~= nil then return sel[fruitName] end
+    for _, v in ipairs(sel) do if v == fruitName then return true end end
+    return false
+end
+
+local function createFruitESP(obj, displayName)
+    if fruitESPObjects[obj] then return end
+    local color = FRUIT_COLORS[displayName] or Color3.fromRGB(255, 200, 80)
+    local lbl = newESPText(color)
+    fruitESPObjects[obj] = { label = lbl, name = displayName }
+end
+
+local function destroyFruitESP(obj)
+    local d = fruitESPObjects[obj]
+    if not d then return end
+    d.label:Remove(); fruitESPObjects[obj] = nil
+end
+
+local function destroyAllFruitESP()
+    for o in pairs(fruitESPObjects) do destroyFruitESP(o) end
+end
+
+local function createFruitTreeESP(model)
+    if fruitTreeESPObjects[model] then return end
+    fruitTreeESPObjects[model] = newESPText(Color3.fromRGB(100, 220, 80))
+end
+
+local function destroyFruitTreeESP(model)
+    local t = fruitTreeESPObjects[model]
+    if not t then return end
+    t:Remove(); fruitTreeESPObjects[model] = nil
+end
+
+local function destroyAllFruitTreeESP()
+    for m in pairs(fruitTreeESPObjects) do destroyFruitTreeESP(m) end
+end
+
+local function isFruitTree(obj)
+    return obj:IsA("Model") and obj.Name:find("Tree") ~= nil
+        and obj:FindFirstChild("FruitType") ~= nil
+end
+
+local function scanForFruit(fruitName)
+    local v1 = fruitName
+    local v2 = fruitName:gsub(" ", "_")
+    for _, child in ipairs(workspace:GetChildren()) do
+        if child:IsA("BasePart") and (child.Name == v1 or child.Name == v2) then
+            createFruitESP(child, fruitName)
+        end
+    end
+    for _, child in ipairs(ReplicatedStorage:GetChildren()) do
+        if child:IsA("BasePart") and (child.Name == v1 or child.Name == v2) then
+            createFruitESP(child, fruitName)
+        end
+    end
+end
+
+local function scanAllSelectedFruits()
+    for _, fruitName in ipairs(FRUIT_NAMES) do
+        if isFruitSelected(fruitName) then
+            scanForFruit(fruitName)
+        end
+    end
+end
+
+local function startFruitLoop()
+    if fruitRenderConn then return end
+    fruitRenderConn = RunService.RenderStepped:Connect(function()
+        local camera   = workspace.CurrentCamera
+        local camPos   = camera.CFrame.Position
+        local textSize = FruitESPSettings.TextSize
+        local textFont = ESPSettings.TextFont
+        local maxDist  = FruitESPSettings.TextDistance
+
+        -- Fruit objects
+        local toCleanFruits = {}
+        for obj, data in pairs(fruitESPObjects) do
+            if not obj.Parent then
+                data.label.Visible = false
+                table.insert(toCleanFruits, obj)
+                continue
+            end
+            if not FruitESPSettings.Enabled then data.label.Visible = false; continue end
+            local pos = getObjPos(obj)
+            if not pos then data.label.Visible = false; continue end
+            local dist = (pos - camPos).Magnitude
+            local sp, onScreen = camera:WorldToViewportPoint(pos + Vector3.new(0, 2, 0))
+            if not onScreen or dist > maxDist then data.label.Visible = false; continue end
+            data.label.Size     = textSize
+            data.label.Font     = textFont
+            data.label.Text     = string.format("%s\n%.0fm", data.name, dist)
+            data.label.Position = Vector2.new(sp.X, sp.Y)
+            data.label.Visible  = true
+        end
+        for _, o in ipairs(toCleanFruits) do destroyFruitESP(o) end
+
+        -- Fruit trees
+        local toCleanTrees = {}
+        for model, label in pairs(fruitTreeESPObjects) do
+            if not model.Parent then
+                label.Visible = false
+                table.insert(toCleanTrees, model)
+                continue
+            end
+            if not FruitESPSettings.FruitTree then label.Visible = false; continue end
+            local ftVal = model:FindFirstChild("FruitType")
+            local pos   = getObjPos(model)
+            if not pos then label.Visible = false; continue end
+            local dist = (pos - camPos).Magnitude
+            local sp, onScreen = camera:WorldToViewportPoint(pos + Vector3.new(0, 4, 0))
+            if not onScreen or dist > maxDist then label.Visible = false; continue end
+            label.Size     = textSize
+            label.Font     = textFont
+            label.Text     = string.format("%s Tree%.0fm", ftVal and ftVal.Value or model.Name, dist)
+            label.Position = Vector2.new(sp.X, sp.Y)
+            label.Visible  = true
+        end
+        for _, m in ipairs(toCleanTrees) do destroyFruitTreeESP(m) end
+    end)
+end
+
+local function stopFruitLoop()
+    if fruitRenderConn then fruitRenderConn:Disconnect(); fruitRenderConn = nil end
+end
+
+local function isAnyFruitEnabled()
+    if FruitESPSettings.FruitTree then return true end
+    if not FruitESPSettings.Enabled then return false end
+    for _, fruitName in ipairs(FRUIT_NAMES) do
+        if isFruitSelected(fruitName) then return true end
+    end
+    return false
+end
+
+local function hookFruitDescendants()
+    if fruitDescConn then fruitDescConn:Disconnect() end
+    fruitDescConn = workspace.ChildAdded:Connect(function(obj)
+        task.wait()
+        if not obj or not obj.Parent then return end
+        if FruitESPSettings.Enabled and obj:IsA("BasePart") then
+            local objName = obj.Name
+            for _, fruitName in ipairs(FRUIT_NAMES) do
+                if isFruitSelected(fruitName) then
+                    if objName == fruitName or objName == fruitName:gsub(" ", "_") then
+                        createFruitESP(obj, fruitName)
+                        break
+                    end
+                end
+            end
+        end
+        if FruitESPSettings.FruitTree and isFruitTree(obj) then
+            createFruitTreeESP(obj)
+        end
+    end)
+end
+
+local function updateFruitHooks()
+    if isAnyFruitEnabled() then
+        hookFruitDescendants()
+        startFruitLoop()
+    else
+        if fruitDescConn then fruitDescConn:Disconnect(); fruitDescConn = nil end
+        stopFruitLoop()
+    end
+end
+
+local function setFruitESP(enabled)
+    FruitESPSettings.Enabled = enabled
+    if enabled then
+        scanAllSelectedFruits()
+    else
+        destroyAllFruitESP()
+    end
+    updateFruitHooks()
+end
+
+local function setFruitTreeESP(enabled)
+    FruitESPSettings.FruitTree = enabled
+    if enabled then
+        for _, obj in ipairs(workspace:GetChildren()) do
+            if isFruitTree(obj) then createFruitTreeESP(obj) end
+        end
+    else
+        destroyAllFruitTreeESP()
+    end
+    updateFruitHooks()
+end
+
+-- ══════════════════════════════════════
+--              CATEGORIES
+-- ══════════════════════════════════════
+
+Window:DrawCategory({ Name = "Main" })
+
+-- ══════════════════════════════════════
+--              MAIN TAB
+-- ══════════════════════════════════════
+
+local MainTab = Window:DrawTab({
+    Name = "Main",
+    Icon = "lucide-switch-camera",
+    EnableScrolling = true,
+})
+
+do
+    -- Utility (right) --
+    local UtilitySection = MainTab:DrawSection({
+        Name = "Utility",
+        Position = "right",
+    })
+
+    UtilitySection:AddButton({
+        Name = "Reset Character",
+        Callback = resetCharacter,
+    })
+
+    UtilitySection:AddButton({
+        Name = "Random Server Hop",
+        Callback = randomServerHop,
+    })
+
+    UtilitySection:AddButton({
+        Name = "Low Player Server Hop",
+        Callback = lowPlayerServerHop,
+    })
+
+    UtilitySection:AddButton({
+        Name = "Join Main Menu",
+        Callback = joinMainMenu,
+    })
+
+    -- Misc Features (right) --
+    local MiscFeaturesSection = MainTab:DrawSection({
+        Name = "Misc Features",
+        Position = "right",
+    })
+
+    MiscFeaturesSection:AddToggle({
+        Name = "Auto Pickup",
+        Flag = "AutoPickup",
+        Default = false,
+        Callback = autoPickup,
+    })
+
+    MiscFeaturesSection:AddToggle({
+        Name = "Anti Void",
+        Flag = "AntiVoid",
+        Default = false,
+        Callback = antiVoid,
+    })
+
+    MiscFeaturesSection:AddToggle({
+        Name = "Anti Burn",
+        Flag = "AntiBurn",
+        Default = false,
+        Callback = antiBurn,
+    })
+
+    MiscFeaturesSection:AddToggle({
+        Name = "Tree Jump Anything",
+        Flag = "TreeJumpAnything",
+        Default = false,
+        Callback = treeJumpAnything,
+    })
+
+    MiscFeaturesSection:AddToggle({
+        Name = "Infinite Jump Counter",
+        Flag = "InfiniteJumpCounter",
+        Default = false,
+        Callback = infiniteJumpCounter,
+    })
+
+    MiscFeaturesSection:AddToggle({
+        Name = "No Blindness",
+        Flag = "NoBlindness",
+        Default = false,
+        Callback = noBlindness,
+    })
+
+    MiscFeaturesSection:AddToggle({
+        Name = "Chakra Boost",
+        Flag = "ChakraBoost",
+        Default = false,
+        Callback = chakraBoost,
+    })
+
+    MiscFeaturesSection:AddSlider({
+        Name = "Boost Stage",
+        Flag = "ChakraBoostAmount",
+        Min = 1,
+        Max = 6,
+        Default = 1,
+        Round = 0,
+        Increment = 1,
+        Callback = function(v)
+            chakrabuffamount = v
+        end,
+    })
+
+    -- Visuals (left) --
+    local VisualsSection = MainTab:DrawSection({
+        Name = "Visuals",
+        Position = "left",
+    })
+
+    VisualsSection:AddDropdown({
+        Name = "Time of Day",
+        Flag = "TimeOfDay",
+        Default = "Morning",
+        Values = { "Morning", "Afternoon", "Evening", "Night" },
+        Callback = function(v)
+            currentTimeOfDay = v
+        end,
+    })
+
+    VisualsSection:AddToggle({
+        Name = "Time Changer",
+        Flag = "TimeChanger",
+        Default = false,
+        Callback = setTimeChanger,
+    })
+
+    VisualsSection:AddToggle({
+        Name = "No Fog",
+        Flag = "NoFog",
+        Default = false,
+        Callback = setNoFog,
+    })
+
+    VisualsSection:AddToggle({
+        Name = "No Rain",
+        Flag = "NoRain",
+        Default = false,
+        Callback = setNoRain,
+    })
+
+    VisualsSection:AddToggle({
+        Name = "Full Bright",
+        Flag = "FullBright",
+        Default = false,
+        Callback = setFullBright,
+    })
+
+    VisualsSection:AddSlider({
+        Name = "Brightness",
+        Flag = "BrightnessLevel",
+        Min = 0,
+        Max = 10,
+        Default = 5,
+        Round = 0,
+        Increment = 0.5,
+        Callback = function(v)
+            currentBrightnessLevel = v
+            applyFullBright()
+        end,
+    })
+
+    -- Auto Sell (left) --
+    local AutoSellSection = MainTab:DrawSection({
+        Name = "Auto Sell",
+        Position = "left",
+    })
+
+    AutoSellSection:AddButton({
+        Name = "Sell All Fruits",
+        Callback = function()
+            sellAll("Fruit")
+        end,
+    })
+
+    AutoSellSection:AddButton({
+        Name = "Sell All Trinkets",
+        Callback = function()
+            sellAll("Trinket")
+        end,
+    })
+
+    AutoSellSection:AddButton({
+        Name = "Sell All Gems",
+        Callback = function()
+            sellAll("Gem")
+        end,
+    })
+
+end
+
+-- ══════════════════════════════════════
+--               ESP TAB
+-- ══════════════════════════════════════
+
+local ESPTab = Window:DrawTab({
+    Name = "ESP",
+    Icon = "eye",
+    EnableScrolling = true,
+})
+
+do
+    -- Player ESP (left) --
+    local PlayerESPSection = ESPTab:DrawSection({
+        Name = "Player ESP",
+        Position = "left",
+    })
+
+    PlayerESPSection:AddToggle({
+        Name = "Player ESP",
+        Flag = "PlayerESP",
+        Default = false,
+        Callback = setPlayerESP,
+    })
+
+    PlayerESPSection:AddToggle({
+        Name = "Village Colors",
+        Flag = "ESPVillageColor",
+        Default = false,
+        Callback = function(v)
+            ESPSettings.VillageColor = v
+        end,
+    })
+
+    PlayerESPSection:AddDropdown({
+        Name = "Player ESP Settings",
+        Flag = "ESPShowOptions",
+        Multi = true,
+        Default = { "Name", "Health", "Distance" },
+        Values = { "Name", "Health", "Distance", "Bloodline", "Jutsu Prediction", "Show Awakened", "Show Reanimated", "Freshy Checker", "Show Combat Timer", "Show Blood" },
+        Callback = function(selected)
+            local function isOn(key)
+                if selected[key] ~= nil then return selected[key] end
+                for _, v in ipairs(selected) do if v == key then return true end end
+                return false
+            end
+            ESPSettings.Show.Name            = isOn("Name")
+            ESPSettings.Show.Health          = isOn("Health")
+            ESPSettings.Show.Distance        = isOn("Distance")
+            ESPSettings.Show.Bloodline       = isOn("Bloodline")
+            ESPSettings.Show.JutsuPrediction = isOn("Jutsu Prediction")
+            ESPSettings.Show.ShowAwakened    = isOn("Show Awakened")
+            ESPSettings.Show.ShowReanimated  = isOn("Show Reanimated")
+            ESPSettings.Show.FreshyChecker   = isOn("Freshy Checker")
+            ESPSettings.Show.ShowCombatTimer = isOn("Show Combat Timer")
+            ESPSettings.Show.ShowBlood       = isOn("Show Blood")
+            if ESPSettings.Show.JutsuPrediction and ESPSettings.Enabled then
+                initJutsuPrediction()
+            end
+        end,
+    })
+
+    PlayerESPSection:AddSlider({
+        Name = "Text Size",
+        Flag = "ESPTextSize",
+        Min = 8,
+        Max = 24,
+        Default = 16,
+        Round = 0,
+        Increment = 1,
+        Callback = function(v)
+            ESPSettings.TextSize = v
+        end,
+    })
+
+    PlayerESPSection:AddSlider({
+        Name = "Text Distance",
+        Flag = "ESPTextDistance",
+        Min = 100,
+        Max = 10000,
+        Default = 1000,
+        Round = 0,
+        Increment = 100,
+        Callback = function(v)
+            ESPSettings.TextDistance = v
+        end,
+    })
+
+    PlayerESPSection:AddColorPicker({
+        Name = "Text Color",
+        Flag = "ESPColor",
+        Default = Color3.fromRGB(255, 255, 255),
+        Callback = function(v)
+            ESPSettings.Color = v
+        end,
+    })
+
+    PlayerESPSection:AddDropdown({
+        Name = "Text Font",
+        Flag = "ESPTextFont",
+        Default = "Legacy",
+        Values = {"Legacy", "Monospace", "System"},
+        Callback = function(v)
+            ESPSettings.TextFont = DrawingFonts[v] or 3  -- fallback: SourceSans
+        end,
+    })
+
+    PlayerESPSection:AddToggle({
+        Name = "Box ESP",
+        Flag = "BoxESP",
+        Default = false,
+        Callback = function(v)
+            ESPSettings.BoxEnabled = v
+        end,
+    })
+
+    PlayerESPSection:AddSlider({
+        Name = "Box Distance",
+        Flag = "BoxDistance",
+        Min = 10,
+        Max = 1000,
+        Default = 100,
+        Round = 0,
+        Increment = 10,
+        Callback = function(v)
+            ESPSettings.BoxDistance = v
+        end,
+    })
+
+    PlayerESPSection:AddToggle({
+        Name = "Health Bar",
+        Flag = "HealthBar",
+        Default = false,
+        Callback = function(v)
+            ESPSettings.Show.HealthBar = v
+        end,
+    })
+
+    PlayerESPSection:AddSlider({
+        Name = "Health Bar Width",
+        Flag = "HealthBarWidth",
+        Min = 1,
+        Max = 12,
+        Default = 4,
+        Round = 0,
+        Increment = 1,
+        Callback = function(v)
+            ESPSettings.HealthBarWidth = v
+        end,
+    })
+
+    -- Fruit ESP (left) --
+    local FruitESPSection = ESPTab:DrawSection({
+        Name = "Fruit ESP",
+        Position = "left",
+    })
+
+    FruitESPSection:AddToggle({
+        Name = "Fruit ESP",
+        Flag = "FruitESP",
+        Default = false,
+        Callback = setFruitESP,
+    })
+
+    FruitESPSection:AddDropdown({
+        Name = "Fruits",
+        Flag = "FruitESPFruits",
+        Multi = true,
+        Default = {},
+        Values = {
+            "Chakra Fruit", "Life Up Fruit", "Fruit Of Forgetfulness",
+            "Apple", "Alluring Apple", "Banana", "Mango", "Pear", "Orange",
+        },
+        Callback = function(selected)
+            FruitESPSettings.Selected = selected
+            if FruitESPSettings.Enabled then
+                destroyAllFruitESP()
+                scanAllSelectedFruits()
+            end
+        end,
+    })
+
+    FruitESPSection:AddToggle({
+        Name = "Fruit Tree ESP",
+        Flag = "FruitTreeESP",
+        Default = false,
+        Callback = setFruitTreeESP,
+    })
+
+    FruitESPSection:AddSlider({
+        Name = "Text Size",
+        Flag = "FruitESPTextSize",
+        Min = 8,
+        Max = 25,
+        Default = 16,
+        Round = 0,
+        Increment = 1,
+        Callback = function(v)
+            FruitESPSettings.TextSize = v
+        end,
+    })
+
+    FruitESPSection:AddSlider({
+        Name = "Text Distance",
+        Flag = "FruitESPTextDistance",
+        Min = 100,
+        Max = 10000,
+        Default = 1000,
+        Round = 0,
+        Increment = 100,
+        Callback = function(v)
+            FruitESPSettings.TextDistance = v
+        end,
+    })
+
+    -- Mob ESP (right) --
+    local MobESPSection = ESPTab:DrawSection({
+        Name = "Mob ESP",
+        Position = "right",
+    })
+
+    MobESPSection:AddToggle({
+        Name = "Mob ESP",
+        Flag = "MobESP",
+        Default = false,
+        Callback = setMobESP,
+    })
+
+    MobESPSection:AddDropdown({
+        Name = "Mob ESP Settings",
+        Flag = "MobESPShowOptions",
+        Multi = true,
+        Default = { "Name", "Health", "Distance" },
+        Values = { "Name", "Health", "Distance" },
+        Callback = function(selected)
+            local function isOn(key)
+                if selected[key] ~= nil then return selected[key] end
+                for _, v in ipairs(selected) do if v == key then return true end end
+                return false
+            end
+            MobESPSettings.Show.Name     = isOn("Name")
+            MobESPSettings.Show.Health   = isOn("Health")
+            MobESPSettings.Show.Distance = isOn("Distance")
+        end,
+    })
+
+    MobESPSection:AddSlider({
+        Name = "Text Size",
+        Flag = "MobESPTextSize",
+        Min = 8,
+        Max = 25,
+        Default = 14,
+        Round = 0,
+        Increment = 1,
+        Callback = function(v)
+            MobESPSettings.TextSize = v
+        end,
+    })
+
+    MobESPSection:AddSlider({
+        Name = "Text Distance",
+        Flag = "MobESPTextDistance",
+        Min = 100,
+        Max = 10000,
+        Default = 1000,
+        Round = 0,
+        Increment = 100,
+        Callback = function(v)
+            MobESPSettings.TextDistance = v
+        end,
+    })
+
+    MobESPSection:AddColorPicker({
+        Name = "Text Color",
+        Flag = "MobESPColor",
+        Default = Color3.fromRGB(255, 100, 100),
+        Callback = function(v)
+            MobESPSettings.Color = v
+        end,
+    })
+
+    -- Other ESP (right) --
+    local OtherESPSection = ESPTab:DrawSection({
+        Name = "Other ESP",
+        Position = "right",
+    })
+
+    OtherESPSection:AddToggle({
+        Name = "NPC ESP",
+        Flag = "NpcESP",
+        Default = false,
+        Callback = setNPCESP,
+    })
+
+    OtherESPSection:AddToggle({
+        Name = "Object ESP",
+        Flag = "GrabableESP",
+        Default = false,
+        Callback = setGrabableESP,
+    })
+
+    OtherESPSection:AddToggle({
+        Name = "Weapon ESP",
+        Flag = "WeaponESP",
+        Default = false,
+        Callback = setWeaponESP,
+    })
+
+    OtherESPSection:AddToggle({
+        Name = "Event Weapon ESP",
+        Flag = "EventWeaponESP",
+        Default = false,
+        Callback = setEventWeaponESP,
+    })
+
+    OtherESPSection:AddToggle({
+        Name = "Unstable Rift ESP",
+        Flag = "UnstableRiftESP",
+        Default = false,
+        Callback = setRiftESP,
+    })
+
+    OtherESPSection:AddToggle({
+        Name = "Chakra Point ESP",
+        Flag = "ChakraPointESP",
+        Default = false,
+        Callback = setChakraESP,
+    })
+
+    OtherESPSection:AddToggle({
+        Name = "Corrupted Point ESP",
+        Flag = "CorruptedPointESP",
+        Default = false,
+        Callback = setCorruptedESP,
+    })
+
+    OtherESPSection:AddSlider({
+        Name = "Text Size",
+        Flag = "OtherESPTextSize",
+        Min = 8,
+        Max = 25,
+        Default = 14,
+        Round = 0,
+        Increment = 1,
+        Callback = function(v)
+            OtherESPSettings.TextSize = v
+        end,
+    })
+
+    OtherESPSection:AddSlider({
+        Name = "Text Distance",
+        Flag = "OtherESPTextDistance",
+        Min = 100,
+        Max = 10000,
+        Default = 1000,
+        Round = 0,
+        Increment = 100,
+        Callback = function(v)
+            OtherESPSettings.TextDistance = v
+        end,
+    })
+end
+
+-- ══════════════════════════════════════
+--            TELEPORT TAB
+-- ══════════════════════════════════════
+
+local TeleportTab = Window:DrawTab({
+    Name = "Teleport",
+    Icon = "navigation",
+    EnableScrolling = true,
+})
+
+do
+    -- ── Helpers ──
+
+    local function nearbyPlayerExists(pos, radius)
+        for _, p in ipairs(Players:GetPlayers()) do
+            if p ~= LocalPlayer then
+                local char = p.Character
+                local hrp  = char and char:FindFirstChild("HumanoidRootPart")
+                if hrp and (hrp.Position - pos).Magnitude <= radius then
+                    return true
+                end
+            end
+        end
+        return false
+    end
+
+    local function teleportTo(pos)
+        local char = LocalPlayer.Character
+        local hrp  = char and char:FindFirstChild("HumanoidRootPart")
+        if hrp then
+            hrp.CFrame = CFrame.new(pos + Vector3.new(0, 3, 0))
+        end
+    end
+
+    local function getModelPos(model)
+        local hrp = model:FindFirstChild("HumanoidRootPart")
+        if hrp then return hrp.Position end
+        local ok, cf = pcall(function() return model:GetBoundingBox() end)
+        if ok and cf then return cf.Position end
+        return nil
+    end
+
+    -- ══════ Left: Teleports ══════
+
+    local TeleportsSection = TeleportTab:DrawSection({
+        Name = "Teleports",
+        Position = "left",
+    })
+
+    -- ── Chakra Points ──
+
+    local selectedChakraPoint = nil
+    local chakraPointMap      = {}
+
+    local function buildChakraList()
+        local list = {}
+        chakraPointMap = {}
+        local folder = workspace:FindFirstChild("ChakraPoints")
+        if folder then
+            for _, child in ipairs(folder:GetChildren()) do
+                if child:IsA("Model") then
+                    local pnVal = child:FindFirstChild("PointName")
+                    local name  = (pnVal and pnVal.Value ~= "") and pnVal.Value or child.Name
+                    table.insert(list, name)
+                    chakraPointMap[name] = child
+                end
+            end
+        end
+        table.sort(list)
+        if #list == 0 then list = { "None" } end
+        return list
+    end
+
+    TeleportsSection:AddDropdown({
+        Name    = "Chakra Points",
+        Flag    = "TeleportChakraPoint",
+        Default = "",
+        Values  = buildChakraList(),
+        Callback = function(v)
+            selectedChakraPoint = v
+        end,
+    })
+
+    TeleportsSection:AddButton({
+        Name = "TP to Chakra Point",
+        Callback = function()
+            if not selectedChakraPoint or selectedChakraPoint == "None" then
+                Notifier.new({ Title = "Teleport", Content = "No chakra point selected.", Duration = 3 })
+                return
+            end
+            local model = chakraPointMap[selectedChakraPoint]
+            if not model or not model.Parent then
+                Notifier.new({ Title = "Teleport", Content = "Chakra point not found in workspace.", Duration = 3 })
+                return
+            end
+            local pos = getModelPos(model)
+            if not pos then
+                Notifier.new({ Title = "Teleport", Content = "Could not resolve chakra point position.", Duration = 3 })
+                return
+            end
+            if nearbyPlayerExists(pos, 75) then
+                Notifier.new({ Title = "Teleport", Content = "A player is within 75m of " .. selectedChakraPoint .. "!", Duration = 4 })
+                return
+            end
+            teleportTo(pos)
+            Notifier.new({ Title = "Teleport", Content = "Teleported to " .. selectedChakraPoint, Duration = 3 })
+        end,
+    })
+
+    TeleportsSection:AddButton({
+        Name = "Force TP to Chakra Point",
+        Callback = function()
+            if not selectedChakraPoint or selectedChakraPoint == "None" then
+                Notifier.new({ Title = "Teleport", Content = "No chakra point selected.", Duration = 3 })
+                return
+            end
+            local model = chakraPointMap[selectedChakraPoint]
+            if not model or not model.Parent then
+                Notifier.new({ Title = "Teleport", Content = "Chakra point not found in workspace.", Duration = 3 })
+                return
+            end
+            local pos = getModelPos(model)
+            if not pos then
+                Notifier.new({ Title = "Teleport", Content = "Could not resolve chakra point position.", Duration = 3 })
+                return
+            end
+            teleportTo(pos)
+            Notifier.new({ Title = "Teleport", Content = "Force teleported to " .. selectedChakraPoint, Duration = 3 })
+        end,
+    })
+
+    -- ── Players ──
+
+    local selectedTpPlayer = nil
+
+    local function buildPlayerList()
+        local list = {}
+        for _, p in ipairs(Players:GetPlayers()) do
+            if p ~= LocalPlayer then
+                table.insert(list, p.Name)
+            end
+        end
+        table.sort(list)
+        if #list == 0 then list = { "None" } end
+        return list
+    end
+
+    local playerDropdown = TeleportsSection:AddDropdown({
+        Name    = "Players",
+        Flag    = "TeleportPlayer",
+        Default = "",
+        Values  = buildPlayerList(),
+        Callback = function(v)
+            selectedTpPlayer = v
+        end,
+    })
+
+    TeleportsSection:AddButton({
+        Name = "Teleport to Player",
+        Callback = function()
+            if not selectedTpPlayer or selectedTpPlayer == "None" then
+                Notifier.new({ Title = "Teleport", Content = "No player selected.", Duration = 3 })
+                return
+            end
+            local target = Players:FindFirstChild(selectedTpPlayer)
+            if not target then
+                Notifier.new({ Title = "Teleport", Content = "Player not found: " .. selectedTpPlayer, Duration = 3 })
+                return
+            end
+            local char = target.Character
+            local hrp  = char and char:FindFirstChild("HumanoidRootPart")
+            if not hrp then
+                Notifier.new({ Title = "Teleport", Content = selectedTpPlayer .. " has no character.", Duration = 3 })
+                return
+            end
+            teleportTo(hrp.Position)
+            Notifier.new({ Title = "Teleport", Content = "Teleported to " .. selectedTpPlayer, Duration = 3 })
+        end,
+    })
+
+    TeleportsSection:AddButton({
+        Name = "Refresh Players",
+        Callback = function()
+            local newList = buildPlayerList()
+            selectedTpPlayer = nil
+            pcall(function()
+                playerDropdown:SetValues(newList)
+            end)
+            Notifier.new({ Title = "Teleport", Content = "Player list refreshed.", Duration = 2 })
+        end,
+    })
+
+    -- ── NPCs ──
+
+    local selectedNPC = nil
+    local npcMap      = {}
+
+    local function buildNPCList()
+        local list = {}
+        npcMap = {}
+        local nameCount = {}
+        for _, obj in ipairs(workspace:GetDescendants()) do
+            if obj:IsA("Model") then
+                local npcVal = obj:FindFirstChild("NPC")
+                if npcVal and npcVal:IsA("StringValue") and npcVal.Value == "Dialog" then
+                    local isPlayer = false
+                    for _, p in ipairs(Players:GetPlayers()) do
+                        if p.Character == obj then isPlayer = true; break end
+                    end
+                    if not isPlayer then
+                        local baseName = obj.Name
+                        nameCount[baseName] = (nameCount[baseName] or 0) + 1
+                        local displayName = baseName
+                        if nameCount[baseName] > 1 then
+                            displayName = baseName .. " (" .. nameCount[baseName] .. ")"
+                        end
+                        table.insert(list, displayName)
+                        npcMap[displayName] = obj
+                    end
+                end
+            end
+        end
+        table.sort(list)
+        if #list == 0 then list = { "None" } end
+        return list
+    end
+
+    TeleportsSection:AddDropdown({
+        Name    = "NPCs",
+        Flag    = "TeleportNPC",
+        Default = "",
+        Values  = buildNPCList(),
+        Callback = function(v)
+            selectedNPC = v
+        end,
+    })
+
+    TeleportsSection:AddButton({
+        Name = "Teleport to NPC",
+        Callback = function()
+            if not selectedNPC or selectedNPC == "None" then
+                Notifier.new({ Title = "Teleport", Content = "No NPC selected.", Duration = 3 })
+                return
+            end
+            local model = npcMap[selectedNPC]
+            if not model or not model.Parent then
+                Notifier.new({ Title = "Teleport", Content = "NPC not found in workspace.", Duration = 3 })
+                return
+            end
+            local pos = getModelPos(model)
+            if not pos then
+                Notifier.new({ Title = "Teleport", Content = "Could not resolve NPC position.", Duration = 3 })
+                return
+            end
+            if nearbyPlayerExists(pos, 25) then
+                Notifier.new({ Title = "Teleport", Content = "A player is within 25m of " .. selectedNPC .. "!", Duration = 4 })
+                return
+            end
+            teleportTo(pos)
+            Notifier.new({ Title = "Teleport", Content = "Teleported to " .. selectedNPC, Duration = 3 })
+        end,
+    })
+
+    TeleportsSection:AddButton({
+        Name = "Force Teleport to NPC",
+        Callback = function()
+            if not selectedNPC or selectedNPC == "None" then
+                Notifier.new({ Title = "Teleport", Content = "No NPC selected.", Duration = 3 })
+                return
+            end
+            local model = npcMap[selectedNPC]
+            if not model or not model.Parent then
+                Notifier.new({ Title = "Teleport", Content = "NPC not found in workspace.", Duration = 3 })
+                return
+            end
+            local pos = getModelPos(model)
+            if not pos then
+                Notifier.new({ Title = "Teleport", Content = "Could not resolve NPC position.", Duration = 3 })
+                return
+            end
+            teleportTo(pos)
+            Notifier.new({ Title = "Teleport", Content = "Force teleported to " .. selectedNPC, Duration = 3 })
+        end,
+    })
+
+    -- ══════ Left: Other ══════
+
+    local OtherSection = TeleportTab:DrawSection({
+        Name = "Other",
+        Position = "left",
+    })
+
+    -- ── Schematics ──
+
+    local SCHEMATIC_NAMES = {
+        "Adamantine Staff",
+        "Executioner's Blade",
+        "Gunbai",
+        "Kusanagi",
+        "Raijin",
+        "Samehada",
+    }
+
+    local selectedSchematic = nil
+
+    local function findSchematicPos(name)
+        for _, obj in ipairs(workspace:GetDescendants()) do
+            if (obj:IsA("Part") or obj:IsA("MeshPart") or obj:IsA("Model")) and obj.Name == name then
+                local isInPlayer = false
+                for _, p in ipairs(Players:GetPlayers()) do
+                    local anc = obj.Parent
+                    while anc and anc ~= workspace do
+                        if p.Character == anc then isInPlayer = true; break end
+                        anc = anc.Parent
+                    end
+                    if isInPlayer then break end
+                end
+                if not isInPlayer then
+                    if obj:IsA("Model") then
+                        local ok, cf = pcall(function() return obj:GetBoundingBox() end)
+                        if ok and cf then return cf.Position end
+                    else
+                        return obj.Position
+                    end
+                end
+            end
+        end
+        return nil
+    end
+
+    OtherSection:AddDropdown({
+        Name    = "Select Schematic",
+        Flag    = "TeleportSchematic",
+        Default = "",
+        Values  = SCHEMATIC_NAMES,
+        Callback = function(v)
+            selectedSchematic = v
+        end,
+    })
+
+    OtherSection:AddButton({
+        Name = "Teleport To Schematic",
+        Callback = function()
+            if not selectedSchematic then
+                Notifier.new({ Title = "Teleport", Content = "No schematic selected.", Duration = 3 })
+                return
+            end
+            local pos = findSchematicPos(selectedSchematic)
+            if not pos then
+                Notifier.new({ Title = "Teleport", Content = selectedSchematic .. " not found in world.", Duration = 3 })
+                return
+            end
+            teleportTo(pos)
+            Notifier.new({ Title = "Teleport", Content = "Teleported to " .. selectedSchematic, Duration = 3 })
+        end,
+    })
+
+    -- ── Boss Teleports ──
+
+    local BOSS_LIST = {
+        { name = "Tairock",             pos = Vector3.new(-121.303,  -215.594,  -1018.952) },
+        { name = "Chakra Knight",       pos = Vector3.new(2869.017,  -125.500,   -929.524) },
+        { name = "Lavarossa",           pos = Vector3.new(-601.345,  -292.110,    -98.226) },
+        { name = "Barbarit The Rose",   pos = Vector3.new(-1029.827,  260.757,  -1646.161) },
+        { name = "Manda",               pos = Vector3.new(1523.904,  -515.001,    979.134) },
+        { name = "Wooden Golem",        pos = Vector3.new(-4473.122,  336.157,  -2930.868) },
+        { name = "Hyuga Boss",          pos = Vector3.new(-664.175,  -107.329,   -745.387) },
+        { name = "Haku Boss",           pos = Vector3.new(-3872.531, -238.513,  -9685.535) },
+        { name = "Lava Snake",          pos = Vector3.new(-599.045,  -548.977,  -1277.639) },
+        { name = "The Ringed Samurai",  pos = Vector3.new(1394.294,  -477.652,   -593.076) },
+    }
+
+    local bossPositionMap = {}
+    local bossDDValues    = {}
+    for _, boss in ipairs(BOSS_LIST) do
+        table.insert(bossDDValues, boss.name)
+        bossPositionMap[boss.name] = boss.pos
+    end
+
+    local selectedBoss = nil
+
+    OtherSection:AddDropdown({
+        Name    = "Boss Teleports",
+        Flag    = "TeleportBoss",
+        Default = "",
+        Values  = bossDDValues,
+        Callback = function(v)
+            selectedBoss = v
+        end,
+    })
+
+    OtherSection:AddButton({
+        Name = "Teleport to Boss",
+        Callback = function()
+            if not selectedBoss then
+                Notifier.new({ Title = "Teleport", Content = "No boss selected.", Duration = 3 })
+                return
+            end
+            local pos = bossPositionMap[selectedBoss]
+            if not pos then
+                Notifier.new({ Title = "Teleport", Content = "Boss position not found.", Duration = 3 })
+                return
+            end
+            teleportTo(pos)
+            Notifier.new({ Title = "Teleport", Content = "Teleported to " .. selectedBoss, Duration = 3 })
+        end,
+    })
+
+    -- ══════ Right: Fruit Teleports ══════
+
+    -- Per-fruit visited tracking (obj reference -> true)
+    local fruitVisitedSets = {}
+
+    local function getFruitVisited(fruitName)
+        if not fruitVisitedSets[fruitName] then fruitVisitedSets[fruitName] = {} end
+        return fruitVisitedSets[fruitName]
+    end
+
+    local function getFruitInstances(fruitName)
+        local raw = {}
+        local v1 = fruitName
+        local v2 = fruitName:gsub(" ", "_")
+        for _, child in ipairs(workspace:GetChildren()) do
+            if child:IsA("BasePart") and (child.Name == v1 or child.Name == v2) then
+                table.insert(raw, child)
+            end
+        end
+        for _, child in ipairs(ReplicatedStorage:GetChildren()) do
+            if child:IsA("BasePart") and (child.Name == v1 or child.Name == v2) then
+                table.insert(raw, child)
+            end
+        end
+        -- Deduplicate by position (round to 1 decimal to absorb float noise)
+        local seen     = {}
+        local instances = {}
+        for _, obj in ipairs(raw) do
+            local p   = obj.Position
+            local key = math.round(p.X * 10) .. "," .. math.round(p.Y * 10) .. "," .. math.round(p.Z * 10)
+            if not seen[key] then
+                seen[key] = true
+                table.insert(instances, obj)
+            end
+        end
+        return instances
+    end
+
+    local FRUIT_PLURAL = {
+        ["Chakra Fruit"]           = "Chakra Fruits",
+        ["Life Up Fruit"]          = "Life Up Fruits",
+        ["Fruit Of Forgetfulness"] = "Fruits Of Forgetfulness",
+    }
+
+    local function teleportToFruitType(fruitName, showCounter)
+        local instances = getFruitInstances(fruitName)
+        local visited   = getFruitVisited(fruitName)
+        local total     = #instances
+
+        local candidates = {}
+        for _, obj in ipairs(instances) do
+            if not visited[obj] then
+                if not nearbyPlayerExists(obj.Position, 50) then
+                    table.insert(candidates, obj)
+                end
+            end
+        end
+
+        local plural = FRUIT_PLURAL[fruitName] or (fruitName .. "s")
+
+        if #candidates == 0 then
+            Notifier.new({ Title = fruitName .. " TP", Content = "No available " .. plural .. " found!", Duration = 4 })
+            return
+        end
+
+        local chosen = candidates[math.random(1, #candidates)]
+        visited[chosen] = true
+        teleportTo(chosen.Position)
+
+        if showCounter then
+            local visitedCount = 0
+            for _ in pairs(visited) do visitedCount = visitedCount + 1 end
+            Notifier.new({ Title = fruitName .. " TP", Content = visitedCount .. "/" .. total .. " " .. plural .. " Left", Duration = 4 })
+        else
+            Notifier.new({ Title = "Teleport", Content = "Teleported to " .. fruitName, Duration = 3 })
+        end
+    end
+
+    local FruitTeleportsSection = TeleportTab:DrawSection({
+        Name = "Fruit Teleports",
+        Position = "right",
+    })
+
+    FruitTeleportsSection:AddButton({
+        Name = "TP to Chakra Fruit",
+        Callback = function()
+            teleportToFruitType("Chakra Fruit", true)
+        end,
+    })
+
+    FruitTeleportsSection:AddButton({
+        Name = "TP to Life Up Fruit",
+        Callback = function()
+            teleportToFruitType("Life Up Fruit", true)
+        end,
+    })
+
+    FruitTeleportsSection:AddButton({
+        Name = "TP to Fruit Of Forgetfulness",
+        Callback = function()
+            teleportToFruitType("Fruit Of Forgetfulness", true)
+        end,
+    })
+
+    local selectedOtherFruit = nil
+
+    FruitTeleportsSection:AddDropdown({
+        Name    = "Other Fruits",
+        Flag    = "TeleportOtherFruit",
+        Default = "",
+        Values  = { "Alluring Apple", "Apple", "Banana", "Mango", "Orange", "Pear" },
+        Callback = function(v)
+            selectedOtherFruit = v
+        end,
+    })
+
+    FruitTeleportsSection:AddButton({
+        Name = "Teleport to Fruit",
+        Callback = function()
+            if not selectedOtherFruit or selectedOtherFruit == "None" then
+                Notifier.new({ Title = "Teleport", Content = "No fruit selected.", Duration = 3 })
+                return
+            end
+            teleportToFruitType(selectedOtherFruit, false)
+        end,
+    })
+
+    -- ══════ Right: Server ══════
+
+    local REGION_LABELS = {
+        ["United States"] = "United",
+        ["Singapore"]     = "Singa",
+        ["Netherlands"]   = "Nether",
+        ["Germany"]       = "Germ",
+        ["Brazil"]        = "Brazil",
+    }
+
+    local serverDropdownEntries = {}  -- display string -> serverId
+    local selectedServerId      = nil
+
+    local function buildServerList()
+        local raw = {}
+        serverDropdownEntries = {}
+        local serversFolder = ReplicatedStorage:FindFirstChild("Servers")
+        if serversFolder then
+            for _, sv in ipairs(serversFolder:GetChildren()) do
+                if sv:IsA("StringValue") and sv.Value ~= "" then
+                    local serverId, playerCount = sv.Value:match("^(%S+)%s+(%d+)$")
+                    if serverId and playerCount then
+                        local regionLabel = ""
+                        local regionSV = sv:FindFirstChild("Region")
+                        if regionSV and regionSV:IsA("StringValue") and regionSV.Value ~= "" then
+                            regionLabel = " " .. (REGION_LABELS[regionSV.Value] or regionSV.Value)
+                        end
+                        local count = tonumber(playerCount) or 0
+                        local display = sv.Name .. " " .. playerCount .. "/20" .. regionLabel
+                        table.insert(raw, { display = display, count = count, id = serverId })
+                    end
+                end
+            end
+        end
+        -- Sort most players to least
+        table.sort(raw, function(a, b) return a.count > b.count end)
+        local entries = {}
+        for _, entry in ipairs(raw) do
+            table.insert(entries, entry.display)
+            serverDropdownEntries[entry.display] = entry.id
+        end
+        if #entries == 0 then entries = { "No servers found" } end
+        return entries
+    end
+
+    local serverInputId = ""
+
+    local function getCurrentServerName()
+        local jobId = game.JobId
+        local serversFolder = ReplicatedStorage:FindFirstChild("Servers")
+        if serversFolder and jobId ~= "" then
+            for _, sv in ipairs(serversFolder:GetChildren()) do
+                if sv:IsA("StringValue") then
+                    local id = sv.Value:match("^(%S+)")
+                    if id == jobId then
+                        return sv.Name
+                    end
+                end
+            end
+        end
+        return "Unknown"
+    end
+
+    local ServerSection = TeleportTab:DrawSection({
+        Name = "Server",
+        Position = "right",
+    })
+
+    ServerSection:AddLabel({
+        Name = "Current Server: " .. getCurrentServerName(),
+    })
+
+    local serverDropdown = ServerSection:AddDropdown({
+        Name    = "Servers",
+        Flag    = "ServerListDropdown",
+        Default = "",
+        Values  = buildServerList(),
+        Callback = function(v)
+            selectedServerId = serverDropdownEntries[v]
+        end,
+    })
+
+    ServerSection:AddButton({
+        Name = "Join Selected Server",
+        Callback = function()
+            if not selectedServerId then
+                Notifier.new({ Title = "Server", Content = "No server selected.", Duration = 3 })
+                return
+            end
+            local Event = ReplicatedStorage.Events.DataEvent
+            Event:FireServer("ServerTeleport", selectedServerId, 14)
+        end,
+    })
+
+    ServerSection:AddButton({
+        Name = "Refresh Servers",
+        Callback = function()
+            local newList = buildServerList()
+            selectedServerId = nil
+            pcall(function()
+                serverDropdown:SetValues(newList)
+            end)
+            Notifier.new({ Title = "Server", Content = "Server list refreshed.", Duration = 2 })
+        end,
+    })
+
+    ServerSection:AddTextBox({
+    	Name = "Input Server ID",
+    	Default = "",
+    	Placeholder = "Enter server ID...",
+    	Numeric = false, -- Optional: true = only allows number input
+    	Flag = "ServerIdInput",
+    	Callback = function(v)
+            serverInputId = v
+        end,
+    })
+
+    ServerSection:AddButton({
+        Name = "Join Server ID",
+        Callback = function()
+            local id = serverInputId and serverInputId:match("^%s*(.-)%s*$")
+            if not id or id == "" then
+                Notifier.new({ Title = "Server", Content = "No server ID entered.", Duration = 3 })
+                return
+            end
+            local Event = ReplicatedStorage.Events.DataEvent
+            Event:FireServer("ServerTeleport", id, 14)
+        end,
+    })
+
+    ServerSection:AddButton({
+        Name = "Copy Server ID",
+        Callback = function()
+            local jobId = game.JobId
+            setclipboard(jobId)
+            Notifier.new({ Title = "Server", Content = "Copied current server ID.", Duration = 2 })
+        end,
+    })
+end
+
+Window:DrawCategory({ Name = "Farm" })
+
+-- ══════════════════════════════════════
+--           AUTO FARM TAB
+-- ══════════════════════════════════════
+
+local AutoFarmTab = Window:DrawTab({
+    Name = "Auto Farm",
+    Icon = "bot",
+    Type = "Single",
+    EnableScrolling = true,
+})
+
+-- ══════════════════════════════════════
+--          PROGRESSION TAB
+-- ══════════════════════════════════════
+
+local ProgressionTab = Window:DrawTab({
+    Name = "Progression",
+    Icon = "trending-up",
+    Type = "Single",
+    EnableScrolling = true,
+})
+
+-- ══════════════════════════════════════
+--            SAFETY TAB
+-- ══════════════════════════════════════
+
+local SafetyTab = Window:DrawTab({
+    Name = "Safety",
+    Icon = "shield",
+    Type = "Single",
+    EnableScrolling = true,
+})
+
+Window:DrawCategory({ Name = "Settings" })
+
+-- ══════════════════════════════════════
+--              MISC TAB
+-- ══════════════════════════════════════
+
+local MiscTab = Window:DrawTab({
+    Name = "Misc",
+    Icon = "settings",
+    Type = "Single",
+    EnableScrolling = true,
+})
+
+-- ══════════════════════════════════════
+--           UI SETTINGS TAB
+-- ══════════════════════════════════════
+
+local UISettingsTab = Window:DrawTab({
+    Name = "UI Settings",
+    Icon = "paintbrush",
+    Type = "Single",
+    EnableScrolling = true,
+})
+
+do
+    local AppearanceSection = UISettingsTab:DrawSection({
+        Name = "Appearance",
+        Position = "left",
+    })
+
+    local themeDropdown
+    themeDropdown = AppearanceSection:AddDropdown({
+        Name    = "Theme",
+        Flag    = "UITheme",
+        Default = "Default",
+        Values  = { "Default", "Dark Blue", "Dark Green", "Purple Rose", "Skeet", "Custom" },
+        Callback = function(v)
+            pcall(function()
+                Compkiller:SetTheme(v)
+            end)
+        end,
+    })
+
+    local uiReady = false
+
+    local function switchToCustom()
+        if not uiReady then return end
+        pcall(function()
+            Compkiller:SetTheme("Custom")
+            themeDropdown:SetValue("Custom")
+        end)
+    end
+
+    local function applyColor(key, color)
+        Compkiller.Colors[key] = color
+        if Compkiller.Elements[key] then
+            for _, v in next, Compkiller.Elements[key] do
+                if v.Element and v.Property then
+                    pcall(function() v.Element[v.Property] = color end)
+                end
+            end
+        end
+    end
+
+    local CustomColorsSection = UISettingsTab:DrawSection({
+        Name = "Custom Colors",
+        Position = "left",
+    })
+
+    CustomColorsSection:AddColorPicker({
+        Name    = "Accent",
+        Flag    = "UIColorAccent",
+        Default = Color3.fromRGB(255, 255, 255),
+        Callback = function(color)
+            switchToCustom()
+            pcall(function() Compkiller:ChangeHighlightColor(color) end)
+        end,
+    })
+
+    CustomColorsSection:AddColorPicker({
+        Name    = "Background",
+        Flag    = "UIColorBackground",
+        Default = Color3.fromRGB(30, 30, 30),
+        Callback = function(color)
+            switchToCustom()
+            applyColor("BGDBColor", color)
+        end,
+    })
+
+    CustomColorsSection:AddColorPicker({
+        Name    = "Block BG",
+        Flag    = "UIColorBlockBG",
+        Default = Color3.fromRGB(35, 35, 35),
+        Callback = function(color)
+            switchToCustom()
+            applyColor("BlockBackground", color)
+        end,
+    })
+
+    CustomColorsSection:AddColorPicker({
+        Name    = "Block",
+        Flag    = "UIColorBlock",
+        Default = Color3.fromRGB(40, 40, 40),
+        Callback = function(color)
+            switchToCustom()
+            applyColor("BlockColor", color)
+        end,
+    })
+
+    CustomColorsSection:AddColorPicker({
+        Name    = "Dropdown",
+        Flag    = "UIColorDropdown",
+        Default = Color3.fromRGB(45, 45, 45),
+        Callback = function(color)
+            switchToCustom()
+            applyColor("DropColor", color)
+        end,
+    })
+
+    CustomColorsSection:AddColorPicker({
+        Name    = "Border",
+        Flag    = "UIColorBorder",
+        Default = Color3.fromRGB(60, 60, 60),
+        Callback = function(color)
+            switchToCustom()
+            applyColor("StrokeColor", color)
+        end,
+    })
+
+    CustomColorsSection:AddColorPicker({
+        Name    = "Highlight Border",
+        Flag    = "UIColorHighBorder",
+        Default = Color3.fromRGB(255, 255, 255),
+        Callback = function(color)
+            switchToCustom()
+            applyColor("HighStrokeColor", color)
+        end,
+    })
+
+    CustomColorsSection:AddColorPicker({
+        Name    = "Separator",
+        Flag    = "UIColorSeparator",
+        Default = Color3.fromRGB(50, 50, 50),
+        Callback = function(color)
+            switchToCustom()
+            applyColor("LineColor", color)
+        end,
+    })
+
+    CustomColorsSection:AddColorPicker({
+        Name    = "Text",
+        Flag    = "UIColorText",
+        Default = Color3.fromRGB(255, 255, 255),
+        Callback = function(color)
+            switchToCustom()
+            applyColor("SwitchColor", color)
+        end,
+    })
+
+    local ControlsSection = UISettingsTab:DrawSection({
+        Name = "Controls",
+        Position = "left",
+    })
+
+    ControlsSection:AddKeybind({
+        Name    = "Toggle Menu",
+        Default = "LeftAlt",
+        Flag    = "UIToggleKeybind",
+        Callback = function(key)
+            pcall(function()
+                Window:SetMenuKey(key)
+            end)
+        end,
+    })
+
+    uiReady = true
+end
+
+-- ══════════════════════════════════════
+--            CONFIG TAB
+-- ══════════════════════════════════════
+
+local ConfigUI = Window:DrawConfig({
+    Name = "Config",
+    Icon = "folder",
+    Config = ConfigManager,
+})
+
+ConfigUI:Init()
